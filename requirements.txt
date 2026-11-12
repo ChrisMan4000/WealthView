@@ -1,0 +1,11 @@
+# WealthView runs on the Python standard library only - no packages are needed to run the app.
+#
+# Runtime baseline (not installable with pip):
+#   * Python 3.10 or newer
+#   * Windows (the desktop shortcut, scheduled task, registry lookup of the Coinbase key and the installer are Windows-only)
+#   * Node.js 18 or newer - only for the Coinbase balances (coinbase_fetch.mjs); everything else works without it
+#
+# Developer tools (lint, security and type checks) are in requirements-dev.txt.
+#
+# Optional (not needed to run): the world-map box can read a local IP-location database (config "geo_db") when this package is installed
+#   maxminddb
