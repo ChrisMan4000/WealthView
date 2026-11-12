@@ -1,0 +1,20 @@
+# user data and secrets: never commit
+config.json
+/data/
+*.db
+*.log
+audit.log
+parse_cache.json
+private_*
+*.exe
+wv-trace.txt
+# files the app or installer writes next to the program
+examplefund.json
+wf_data.js
+wf_logos.js
+src_logos.js
+/logos/
+_pre_data_dir_backup/
+setup-engine/
+__pycache__/
+*.pyc
