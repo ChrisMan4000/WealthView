@@ -2,6 +2,9 @@
 
 The version number lives in one file, `version.js`, and is shown in the dashboard header, browser tab, intro, lock window and installer.
 
+## v1.18 (2026-11-12)
+- New logo "brain chart": a brain outline whose neurons are the points of a rising chart. New `icons/wealthview.ico` (16 to 256 px) and `icons/wealthview.png`, new installer corner image, new README banner (`assets/banner.png`). No code change.
+
 ## v1.17 (2026-11-12)
 - Ask bar is now the last item of the centre column (no more overlay on the network map); the ring shrinks on short screens (minimum 12 rem). Mic and Ask buttons are stacked.
 - Ask: `max_tokens` raised from 900 to 4096 and `timeout_s` set to 180, because thinking models spend the allowance on reasoning; empty replies now give a clear message plus a "Details:" line instead of "No answer."

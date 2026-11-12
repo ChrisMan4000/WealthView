@@ -1,6 +1,6 @@
 # WealthView – Technical Architecture
 
-**Version v1.17 · 2026-11-12.** The version number lives in one file, `version.js`, and is shown in the dashboard header, browser tab, intro, lock window, installer, `data.json` and the READMEs.
+**Version v1.18 · 2026-11-12.** The version number lives in one file, `version.js`, and is shown in the dashboard header, browser tab, intro, lock window, installer, `data.json` and the READMEs.
 
 ## 1. Overview
 WealthView is a local web application. The dashboard is a single HTML page drawn with plain JavaScript (SVG charts, canvas map, no framework, no build step). It is served to your browser by a small Python program (standard-library `http.server`) that listens on `127.0.0.1` only (default port 8780). The Python side reads bank and broker exports into a local SQLite database, adds public market data, computes every dashboard number into one `data.json`, and hands it to the page only after the password was entered. Nothing is uploaded.
