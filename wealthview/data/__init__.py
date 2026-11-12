@@ -1,0 +1,1 @@
+"""Getting data in and turning it into clean records. Two sub-packages: ingest/ (files, SQLite database, web lookups) and finance/ (bookings, categories, own accounts, lots, positions, valuation models); finance may import ingest, never the other way. May import common only."""

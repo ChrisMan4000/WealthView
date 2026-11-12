@@ -1,0 +1,95 @@
+{
+  "refresh_minutes": 30,
+  "thresholds": {
+    "giro_min_eur": 2000,
+    "card_max_eur": 3000
+  },
+  "app_name": "WealthView",
+  "subtitle": "A private overview of your investments and savings",
+  "port": 8780,
+  "quick_refresh_seconds": 300,
+  "oneoff_threshold_eur": 3000,
+  "targets": {
+    "Real estate": {
+      "target": 35,
+      "low": 28,
+      "high": 42
+    },
+    "Securities": {
+      "target": 40,
+      "low": 33,
+      "high": 47
+    },
+    "Private equity": {
+      "target": 12,
+      "low": 8,
+      "high": 15
+    },
+    "Crypto": {
+      "target": 5,
+      "low": 3,
+      "high": 8
+    },
+    "Cash": {
+      "target": 8,
+      "low": 5,
+      "high": 12
+    }
+  },
+  "unusual": {
+    "new_merchant_eur": 250,
+    "dup_days": 5,
+    "spike_mad": 3,
+    "min_history": 4,
+    "rise_pct": 5,
+    "dup_min_eur": 10,
+    "spike_min_eur": 50,
+    "lookback_days": 180,
+    "warmup_days": 90
+  },
+  "index_benchmark": {
+    "symbol": "EUNL.DE",
+    "name": "iShares Core MSCI World"
+  },
+  "stress": {
+    "Securities": -0.3,
+    "Crypto": -0.6,
+    "Real estate": -0.15,
+    "Private equity": -0.3,
+    "Cash": 0.0
+  },
+  "ask": {
+    "url": "http://127.0.0.1:1234/v1",
+    "model": "auto",
+    "model_match": "gemma[-_ ]?4",
+    "start_lmstudio": true,
+    "lms_path": null,
+    "max_rounds": 5,
+    "max_tokens": 4096,
+    "timeout_s": 180
+  },
+  "auto_import": true,
+  "watch_seconds": 60,
+  "tax": {
+    "rate_pct": 26.375,
+    "allowance_eur": 1000
+  },
+  "income": {
+    "cash_rate_pct": 1.0
+  },
+  "display_name": "",
+  "owner_names": [],
+  "gls_dir": "",
+  "paypal_dir": "",
+  "worldfund_dir": "",
+  "wiwin": {},
+  "apartment": {},
+  "loan": {},
+  "depot_meta": {},
+  "logo_domains": {},
+  "symbol_candidates": {},
+  "merchant_extra": {},
+  "liabilities": {},
+  "project_url": "",
+  "jarvis_url": ""
+}
