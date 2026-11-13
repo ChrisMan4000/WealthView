@@ -21,7 +21,7 @@ It is the sibling of [IronMan-JARVIS](https://github.com/ChrisMan4000/IronMan-JA
 
 <p align="center">
   <a href="https://github.com/ChrisMan4000/WealthView/releases/latest/download/WealthView-Setup-public.exe">
-    <img src="docs/download-button.svg" alt="Install WealthView for Windows" width="520">
+    <img src="docs/download-button.svg" alt="Install WealthView (download WealthView-Setup-public.exe for Windows)" width="350">
   </a>
   <br>
   <sub><a href="https://github.com/ChrisMan4000/WealthView/releases">all releases</a> &middot; SHA-256 below</sub>
@@ -132,3 +132,7 @@ Issues and pull requests are welcome. Please never attach real bank exports, bal
 ## 📄 License
 
 [MIT](LICENSE) © ChrisMan4000
+
+<p align="center">
+  <a href="https://www.buymeacoffee.com/ChrisCathode"><img src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20Beer&emoji=&slug=ChrisCathode&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" alt="Buy me a Beer"></a>
+</p>
