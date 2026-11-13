@@ -12,7 +12,7 @@ from .ownaccounts import OwnAccounts, cash_flow_events
 
 MAX_MERCHANTS = 200
 SAMPLES = 8
-SIMILAR_AMOUNT_FACTOR = 5      # a booking more than 5x bigger or smaller than the corrected one counts as clearly different
+SIMILAR_AMOUNT_FACTOR = 5      # a booking more than 5x bigger or smaller than the typical amount of its merchant counts as clearly different
 
 
 def category_names(extra: list[str] | None = None) -> list[str]:
@@ -70,25 +70,27 @@ def overview(conn: sqlite3.Connection, only: str = "sonstiges", q: str = "") -> 
 
 
 def apply_to_similar(conn: sqlite3.Connection, key: str, category: str) -> dict[str, Any]:
-    """After one booking was corrected: give the other bookings of the same merchant the same category, unless they are clearly different.
-    Left alone: bookings you fixed yourself, bookings that were sorted into another category than the corrected one had, and amounts far off (5x).
-    Saved as single-booking corrections, so each can be undone. Returns {applied: number of other bookings changed}."""
+    """After one booking was corrected: give ALL other bookings of the same merchant the same category, unless their amount is clearly different.
+    "Clearly different" = more than 5x bigger or smaller than the typical (median) amount of that merchant, so one odd booking neither blocks nor drags the rest.
+    Earlier single corrections of the merchant are replaced (the choice you just made is the newest word); each result is a single-booking
+    correction that can be undone. Returns {applied: number of other bookings changed}."""
     load_rules_into_classifier(conn)
     rows = db_queries.load_gls_rows(conn)
-    over = db_rules.load(conn)[1]
-    events = [(r, categories.classify(r)) for r, _mk, kind in cash_flow_events(rows, OwnAccounts(rows)) if kind not in ("income", "invest")]
-    hit = next(((r, c) for r, c in events if override_key(r) == key), None)
-    if hit is None:
+    events = [r for r, _mk, kind in cash_flow_events(rows, OwnAccounts(rows)) if kind not in ("income", "invest")]
+    target = next((r for r in events if override_key(r) == key), None)
+    if target is None:
         return dict(applied=0)
-    target, old_cat = hit
-    name, base = merchant_and_domain(target)[0], abs(target["amount"])
+    name = merchant_and_domain(target)[0]
+    same = [r for r in events if merchant_and_domain(r)[0] == name]
+    amounts = sorted(abs(r["amount"]) for r in same)
+    typical = amounts[len(amounts) // 2]
     applied = 0
-    for r, c in events:
+    for r in same:
         k = override_key(r)
-        if k == key or k in over or c != old_cat or merchant_and_domain(r)[0] != name:
+        if k == key:
             continue
         amt = abs(r["amount"])
-        if base > 0 and not (base / SIMILAR_AMOUNT_FACTOR <= amt <= base * SIMILAR_AMOUNT_FACTOR):
+        if typical > 0 and not (typical / SIMILAR_AMOUNT_FACTOR <= amt <= typical * SIMILAR_AMOUNT_FACTOR):
             continue
         db_rules.set_override(conn, k, category, name)
         applied += 1
