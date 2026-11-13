@@ -22,6 +22,7 @@
     { id: 'examplefund', col: '#c4', needs: ['privateEquity', 'examplefund'], dom: ['pWF'] },
     { id: 'crypto', col: '#c4', needs: ['crypto'], dom: ['pCB'] },
     { id: 'alt', col: '#c4', any: ['wiwin', 'loan'], dom: ['pAlt'] },
+    { id: 'typed', col: '#c4', needs: ['typed'], dom: ['pTyped'] },      // v1.20: the house, loans, funds and other investments typed in under Setup
     { id: 'chat', col: null, needs: ['chat'], dom: [] },            // the ask bar: fixed under the grid, not inside a column
     { id: 'empty', col: '#center', dom: ['pEmpty'], only: true }     // never picked by the rules: shown alone when there is nothing to show
   ];
@@ -45,6 +46,7 @@
   }
   function has(profile, need) {
     if (need === 'chat') return !!profile.chat;
+    if (need === 'typed') return !!profile.typed;
     if (MODULES.indexOf(need) >= 0) return !profile.modules || profile.modules[need] !== false;      // a module is on unless the profile switches it off
     return (profile.asset_classes || []).indexOf(need) >= 0;
   }

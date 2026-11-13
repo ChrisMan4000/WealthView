@@ -238,6 +238,9 @@ def load_examplefund(ctx: RunContext) -> ExampleFund | None:
         except (OSError, ValueError, IndexError, TypeError) as exc:
             safenet.swallowed("loaders.load_examplefund", exc)
     wf["newest_report_file"] = latest[1] if latest else None
+    title = setting("fund_title")      # your own display name for the fund (config.json -> fund_title); without it the page says "Example Fund I"
+    if isinstance(title, str) and title.strip():
+        wf["title"] = title.strip()[:60]
     if latest and latest[0] > cur:
         wf["update_available"] = True
         ctx.add_alert("warn", f"New Example Fund report found ({latest[1]}) - ask Claude to update examplefund.json.")

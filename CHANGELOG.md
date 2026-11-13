@@ -2,6 +2,14 @@
 
 The version number lives in one file, `version.js`, and is shown in the dashboard header, browser tab, intro, lock window and installer.
 
+## v1.20 (2026-11-13)
+- **Setup screen** in the dashboard (Setup button): add, rename, re-point, switch off or remove banks, investments and crypto places; folder picker; sub-folder switch; no bank names built in.
+- **Automatic CSV reader** for bank, card, depot and crypto exports of any layout, with one plain question when unsure (remembered per layout).
+- **Typed-in assets:** house or apartment (value follows the Eurostat house price index, labelled "estimate", or your own value), loan (annuity), fund, other investment, and typed balances. They flow into net worth, totals and the new "Typed in" box. New server endpoints `/api/setup/*`.
+- **Fix categories:** a correction is passed on to the similar bookings of the same company; long lists update reliably; "Update dashboard now".
+- `fund_title` setting for the fund panel name. Installer: no pre-filled bank names; texts point to Setup.
+- Demo mode and the screenshots show invented fund figures; the fund is called "Example Fund".
+
 ## v1.19 (2026-11-13)
 - Sources and accounts: the database now keeps a neutral list of *sources* (each thing you set up: a bank, an investment, a crypto place, with its folder or API) and of the *accounts* found inside them (current account, card, depot ...). Every booking, payment row and depot position points to its account. First step towards setting up any mix of banks and investments.
 - Any number of source folders; sub-folders are read too (4 levels deep). An existing setup keeps reading exactly the same files as before.

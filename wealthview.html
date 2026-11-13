@@ -3,7 +3,7 @@
 <title>WealthView</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#02060b">
-<link rel="icon" href="/favicon.ico">
+<link rel="icon" href="/favicon.ico?v=2">
 <style>
 :root{--bg:#02060b;--c:#3cbeeb;--c2:#19d3ff;--tx:#7fdcff;--dim:rgba(127,220,255,.55);--or:#ff9a3d;--gr:#8fe6b8;--rd:#ff6b6b;--bl:#2b9bff;--yl:#ffd24a;--pu:#b48cff;
  --RE:#2b9bff;--SE:#19d3ff;--PE:#ff9a3d;--CA:#8fe6b8;--CR:#ffd24a}
@@ -324,6 +324,7 @@ body.nochat #chat{display:none !important}
     </div>
     <div class="row">
       <button id="bLock"></button>
+      <button id="bSetup" title="Your banks, investments, crypto, house and loans">Setup</button>
       <button id="bRefresh" title="Re-read your files and prices now (R)">Refresh data</button>
     </div>
     <div id="stat"></div>
@@ -348,5 +349,6 @@ body.nochat #chat{display:none !important}
 <script src="insights.js" onerror="void 0"></script>
 <script src="flowpop.js" onerror="void 0"></script>
 <script src="catrules.js" onerror="void 0"></script>
+<script src="setup.js" onerror="void 0"></script>
 <script src="wv.js"></script>
 </body></html>

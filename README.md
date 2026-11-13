@@ -27,7 +27,7 @@ It is the sibling of [IronMan-JARVIS](https://github.com/ChrisMan4000/IronMan-JA
   <sub><a href="https://github.com/ChrisMan4000/WealthView/releases">all releases</a> &middot; SHA-256 below</sub>
 </p>
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-v1.19-0a84ff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-v1.20-0a84ff?style=flat-square">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square">
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows-0078d4?style=flat-square&logo=windows">
   <img alt="python" src="https://img.shields.io/badge/python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white">
@@ -43,7 +43,7 @@ It is the sibling of [IronMan-JARVIS](https://github.com/ChrisMan4000/IronMan-JA
 
 | | |
 |---|---|
-| **[WealthView-Setup-public.exe](https://github.com/ChrisMan4000/WealthView/releases/latest/download/WealthView-Setup-public.exe)** | Windows setup wizard (Inno Setup), v1.19, about 3.1 MB |
+| **[WealthView-Setup-public.exe](https://github.com/ChrisMan4000/WealthView/releases/latest/download/WealthView-Setup-public.exe)** | Windows setup wizard (Inno Setup), v1.20, about 3.1 MB |
 | SHA-256 | `2443935d9b2e2b96e56dad9f4844c16ee27582890e31b5adb1e2528df3bc23dc` |
 
 The wizard checks your PC (Python 3.10+, optional LM Studio for the Ask box), asks which folders hold your bank exports, your residence (for the tax estimate) and a password (4 to 1024 characters), and adds a desktop shortcut. It appears in *Windows Settings > Apps*; uninstall can keep or delete your data. The public edition contains **no personal data**.

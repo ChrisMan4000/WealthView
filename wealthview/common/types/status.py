@@ -37,7 +37,7 @@ class _ImportedFileRequired(TypedDict):
 
 
 class ImportedFile(_ImportedFileRequired, total=False):
-    """one newly imported file in a SyncReport; source = the import kind (gls / depot / paypal / csv), source_name = the user's name of the
+    """one newly imported file in a SyncReport; source = the import kind (gls / depot / paypal / csv, or bank / card / depot / trades / crypto from the automatic reader), source_name = the user's name of the
     source the file belongs to (v1.19; absent while a database has no sources)"""
     source_name: str
 
@@ -57,3 +57,5 @@ class _SyncReportRequired(TypedDict):
 
 class SyncReport(_SyncReportRequired, total=False):
     skipped: bool      # refresh_stages.open_db sets it when the folders had not changed and no sync ran
+    new_crypto: int    # crypto transactions read by the automatic reader (v1.20)
+    questions: int     # files waiting for a plain answer after this sync (v1.20)

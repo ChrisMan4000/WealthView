@@ -10,7 +10,8 @@ from pathlib import Path
 from ...common import parsing, safenet
 from ...common.types.accounts import SourceRow
 from ...common.types.status import ImportedFile, SyncReport
-from . import db_accounts, gls_parse, plugins
+from . import db_accounts, db_auto, gls_parse, plugins
+from .db_common import booking_key, finish_file as _finish_file, link_bookings as _link_bookings
 from .plugins.gls_depot import GlsDepotPlugin
 from .db_schema import meta_get, meta_set, schema_version, transaction
 
@@ -39,13 +40,8 @@ def _register(conn: sqlite3.Connection, path: str | Path, source: str) -> tuple[
     return cur.lastrowid, "new"
 
 
-def _finish_file(conn: sqlite3.Connection, fid: int | None, rows: int, new_rows: int, d_from: str | None = None, d_to: str | None = None, note: str | None = None) -> None:
-    conn.execute("UPDATE files SET rows=?, new_rows=?, d_from=?, d_to=?, note=? WHERE id=?", (rows, new_rows, d_from, d_to, note, fid))
 
 
-def booking_key(iban: str, date: str, amount: float, balance: float | None, purpose: str | None, counterparty: str | None) -> str:
-    s = "|".join(str(x) for x in (iban, date, amount, balance, (purpose or "")[:80], (counterparty or "")[:30]))
-    return hashlib.sha1(s.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 def import_gls_file(conn: sqlite3.Connection, path: str | Path, fid: int | None, source: SourceRow | None = None) -> tuple[int, int]:
@@ -166,17 +162,9 @@ def import_paypal_file(conn: sqlite3.Connection, path: str | Path, fid: int | No
     return n, new
 
 
-def _link_bookings(conn: sqlite3.Connection, source: SourceRow | None, accounts: dict[str, tuple[str, str]]) -> None:
-    """Point the bookings of {iban: (account label, kind)} that have no account yet to their account in `source` (created on first use).
-    Rows that already belong to an account keep it. Nothing happens without a source (old shape)."""
-    if source is None:
-        return
-    for iban, (label, kind) in accounts.items():
-        known = conn.execute("SELECT id FROM accounts WHERE ident=? ORDER BY id LIMIT 1", (iban,)).fetchone() if iban else None
-        # an IBAN is one account, whichever source's file delivers its rows (overlapping or nested folders must not split it)
-        acc = int(known[0]) if known else db_accounts.account_for(conn, source["id"], iban, label, "card" if kind == "card" else "bank")
-        conn.execute("UPDATE bookings SET account_id=? WHERE COALESCE(iban,'')=? AND account_id IS NULL", (acc, iban or ""))
 
+
+LEGACY_IMPORTERS = {"gls": import_gls_file, "gls_depot": import_depot_file, "paypal": import_paypal_file}       # known exports found in an 'auto' folder
 
 MAX_SUBFOLDER_DEPTH = 4      # sub-folder levels read below a source's folder
 MAX_SUBFOLDERS = 500         # folders read per source; a larger tree is cut off (in sorted order) so a wrong folder cannot stall the refresh
@@ -209,14 +197,14 @@ def _plain_files(d: Path) -> list[Path]:
 
 def _source_files(src: SourceRow) -> list[tuple[str, Path]]:
     """[(import kind, path)] of one folder source, by its reader: 'gls' = bank booking and depot exports (older booking exports of the folder
-    above with options.include_parent), 'paypal' = Download*.csv, 'csv' = every other *.csv. Reader 'auto' is read by the automatic reader (v1.20)."""
+    above with options.include_parent), 'paypal' = Download*.csv, 'csv' = every other *.csv. Reader 'auto' (v1.20) = every *.csv / *.txt, read by the automatic reader (db_auto)."""
     root, opts, reader = Path(str(src["folder"])), src["options"], src["reader"]
     out: list[tuple[str, Path]] = []
     folders = _subfolders(root, opts.get("subfolders", True) is not False)
     for d in folders:
         for p in _plain_files(d):
             n = p.name.lower()
-            if not n.endswith(".csv"):
+            if not n.endswith(".csv") and not (reader == "auto" and n.endswith(".txt")):
                 continue
             if reader == "gls" and "umsaetze_" in n:
                 out.append(("gls", p))
@@ -226,6 +214,8 @@ def _source_files(src: SourceRow) -> list[tuple[str, Path]]:
                 out.append(("paypal", p))
             elif reader == "csv" and not _claimed_by_gls_or_paypal(p.name):
                 out.append(("csv", p))
+            elif reader == "auto":
+                out.append(("auto", p))
     if reader == "gls" and opts.get("include_parent") is True:
         out += [("gls", p) for p in _plain_files(root.parent) if p.name.lower().endswith(".csv") and "umsaetze_" in p.name.lower()]
     return out
@@ -371,7 +361,7 @@ def _mark_skipped(conn: sqlite3.Connection, path: str | Path, src: str, note: st
 def sync(conn: sqlite3.Connection, cfg: dict[str, Any]) -> SyncReport:
     """Import everything new from the watched folders. Source files are only read. Returns a report dict."""
     rep: SyncReport = dict(at=dt.datetime.now().isoformat(timespec="seconds"), seen=0, unchanged=0, new_files=[], duplicate_files=[], errors=[],
-               new_bookings=0, new_paypal=0, new_depot=0)
+               new_bookings=0, new_paypal=0, new_depot=0, new_crypto=0, questions=0)
     sources = db_sources(conn)
     files = watched_entries(cfg, sources)
     gls = sorted([x for x in files if x[0] == "gls"], key=lambda x: (gls_parse.file_name_date(x[1]), x[1].name), reverse=True)
@@ -392,6 +382,23 @@ def sync(conn: sqlite3.Connection, cfg: dict[str, Any]) -> SyncReport:
                     continue
                 if owner is not None:
                     conn.execute("UPDATE files SET source_id=? WHERE id=?", (owner["id"], fid))
+                if src == "auto":
+                    assert owner is not None
+                    n, new, kind = db_auto.import_auto_file(conn, p, fid, owner, LEGACY_IMPORTERS)
+                    if kind in ("waiting", "skipped"):
+                        rep["questions"] += kind == "waiting"
+                        continue
+                    entry = ImportedFile(name=p.name, source=kind, rows=n, new=new, source_name=owner["name"])
+                    rep["new_files"].append(entry)
+                    if kind in ("gls", "bank", "card"):
+                        rep["new_bookings"] += new
+                    elif kind in ("depot", "trades"):
+                        rep["new_depot"] += new
+                    elif kind == "crypto":
+                        rep["new_crypto"] += new
+                    else:
+                        rep["new_paypal"] += new
+                    continue
                 if src == "csv":
                     sc = csv_cfg[_norm(p)] if owner is None else {"entity": owner["options"]["entity"] if isinstance(owner["options"].get("entity"), str) else owner["name"], "mapping": owner["options"].get("mapping")}
                     n, new = import_csv_file(conn, p, fid, sc, owner)

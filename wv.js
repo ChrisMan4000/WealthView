@@ -424,13 +424,14 @@
     openTS({ title: `Loan from ${L.lender} · balance over time`, type: 'area', badge: d.mode === 'demo' ? badge('demo', 'Demo') : badge('model', 'Calculated'), make: () => ({ axis: d.axis, kind: 'stock', series: [{ n: 'Remaining balance', c: '#cf6060', v: d.nwx.loan, type: 'area' }] }),
       extra: () => `<div class="stats"><div>Borrowed<b>${A(L.principal)}</b></div><div>Repaid<b>${A(L.repaid)}</b></div><div>Remaining<b>${A(L.balance)}</b></div><div>Monthly<b>${A(L.monthly)}</b></div><div>Months left<b>${L.months_left}</b></div><div>Paid off<b style="font-size:1.02rem">${mlabLong(L.payoff)}</b></div></div><p class="xs dim">Calculated: ${eur(L.monthly)} per month since ${mlabLong(L.start)}, no interest assumed. Adjust loan in config.json.</p>` });
   }
+  function fundTitle(d) { return (d.examplefund && d.examplefund.title) || 'Example Fund I'; }      // your own name via config.json -> fund_title
   function pWF(d) {
     const w = d.examplefund; if (!w) return '';
     const p = w.personal, f = w.fund, lg = window.WF_LOGOS || {}, strip = w.companies.slice().sort((a, b) => b.fair_value - a.fair_value).slice(0, 12).map(c => `<span class="lgw2" data-slug="${esc(c.slug)}" title="${esc(c.name)} · click for details" style="cursor:pointer;width:3.2rem;height:2.2rem;border:1px solid rgba(60,190,235,.3);background:#0b141b;display:inline-block;overflow:hidden">${lg[c.slug] ? `<img src="${lg[c.slug]}" style="width:100%;height:100%;object-fit:cover">` : ''}</span>`).join('');
     const srt = w.companies.slice().sort((a, b) => b.fair_value - a.fair_value), mxv = srt[0].fair_value;
     const top8 = srt.slice(0, 8).map(c => `<div class="tr" data-slug="${esc(c.slug)}" title="Click for company details" style="grid-template-columns:2.6rem minmax(0,1.2fr) 1.6fr 3rem;cursor:pointer"><span style="width:2.4rem;height:1.5rem;border:1px solid rgba(60,190,235,.3);background:#0b141b;overflow:hidden;display:block">${lg[c.slug] ? `<img src="${lg[c.slug]}" style="width:100%;height:100%;object-fit:cover">` : ''}</span><span>${esc(c.name)}<small class="dim"> · ${esc(c.industry)}</small></span><span><span class="bar"><i style="width:${c.fair_value / mxv * 100}%;background:${c.moic >= 1 ? '#8fe6b8' : '#ff6b6b'}"></i></span></span><span class="r ${c.moic >= 1 ? 'pos' : 'neg'}">${c.moic.toFixed(2).replace('.', ',')}x</span></div>`).join('');
     POST.push(() => { $('#wfOpen').onclick = e => { e.stopPropagation(); openWF(); }; $('#pWF').onclick = openWF; $$('#pWF [data-slug]').forEach(x => x.onclick = e => { e.stopPropagation(); openCompany(x.dataset.slug); }); });
-    return panel('pWF', `${logo('examplefund', 'Example Fund')}&nbsp; Example Fund I <b>//</b> your capital account`, srcBadge('examplefund', d),
+    return panel('pWF', `${logo('examplefund', 'Example Fund')}&nbsp; ${esc(fundTitle(d))} <b>//</b> your capital account`, srcBadge('examplefund', d),
       `<div class="kpis" style="margin-bottom:.5rem"><div class="kp"><div class="l">Your NAV</div><div class="v">${A(p.nav)}</div><div class="s">${pct((p.nav / p.paid_in - 1) * 100)} vs paid-in</div></div><div class="kp"><div class="l">Paid in / commitment</div><div class="v">${A(p.paid_in)}</div><div class="s">of ${eur(p.commitment)} · ${(p.paid_in / p.commitment * 100).toFixed(0)} %</div></div><div class="kp"><div class="l">Unfunded</div><div class="v">${A(p.unfunded)}</div><div class="s">still to be called</div></div><div class="kp"><div class="l">Fund TVPI</div><div class="v">${f.tvpi.toFixed(2).replace('.', ',')}x</div><div class="s">net IRR ${pct(f.net_irr)}</div></div></div>
       <div class="xs dim" style="letter-spacing:.14em;margin-bottom:.3rem">TOP HOLDINGS BY FAIR VALUE · MOIC</div><div class="tbl" style="flex:1;min-height:0;overflow:hidden">${top8}</div>
       <div style="display:flex;gap:.3rem;flex-wrap:wrap;margin:.5rem 0">${strip}</div>
@@ -458,6 +459,21 @@
     const loan = L ? `<div class="tr" id="altL" style="grid-template-columns:2.4rem 1fr auto;margin-top:.2rem"><span>${iconLg('loan')}</span><span class="nm"><span class="t">Loan from ${esc(L.lender)}<small>${eur(L.monthly)} / month · paid off ${mlabLong(L.payoff)}</small><span class="bar" style="display:block;margin-top:.2rem"><i style="width:${L.repaid / L.principal * 100}%;background:#6fbf95"></i></span></span></span><span class="r neg">−${A(L.balance)}</span></div>` : '';
     return panel('pAlt', 'Alternatives <b>//</b> private holdings & loans', srcBadge('wiwin', d), `<div class="tr" id="altW" style="grid-template-columns:2.4rem 1fr auto"><span>${logo('wiwin', 'wiwin', true)}</span><span class="nm"><span class="t">${esc(wi.issuer)}<small>${esc(wi.platform)} · ${esc(wi.note || 'at cost')} · counts as private equity</small></span></span><span class="r wh">${A(wi.invested)}</span></div>${loan}<div class="xs dim" style="margin-top:.4rem">Private equity total (Example Fund + wiwin): <b class="wh">${A(classValues(d)['Private equity'])}</b></div>`, { style: 'flex:1.1' });
   }
+  /* v1.20: what you typed in under Setup (house, loans, funds, other investments, balances). Shown only when something was typed in. */
+  function pTyped(d) {
+    const a = d.assets; if (!a) return '';
+    const row = (name, sub, val, neg) => `<div class="tr" style="grid-template-columns:1fr auto"><span class="nm"><span class="t">${esc(name)}<small>${esc(sub)}</small></span></span><span class="r ${neg ? 'neg' : 'wh'}">${neg ? '−' : ''}${A(val)}</span></div>`;
+    const rows = [];
+    (a.property || []).forEach(p => rows.push(row(p.name, 'House / apartment · ' + p.basis + (p.equity != null && p.equity !== p.value ? ' · ' + eur(p.equity) + ' after its loan' : ''), p.value)));
+    (a.loans || []).forEach(l => rows.push(row(l.name, 'Loan · ' + eur(l.monthly) + ' / month' + (l.payoff ? ' · paid off ' + mlabLong(l.payoff) : ''), l.balance, true)));
+    (a.funds || []).forEach(f => rows.push(row(f.name, 'Fund · ' + (f.basis === 'typed' && f.gain != null ? (f.gain >= 0 ? '+' : '−') + eur(Math.abs(f.gain)) + ' on ' + eur(f.invested) + ' paid in' : 'shown at cost'), f.value)));
+    (a.other || []).forEach(o => rows.push(row(o.name, 'Other investment' + (o.date ? ' · as of ' + o.date : ''), o.value)));
+    (a.balances || []).forEach(b => rows.push(row(b.name, 'Balance you typed in', b.balance)));
+    const est = (a.property || []).some(p => p.basis === 'estimate');
+    POST.push(() => { const l = $('#tySetup'); if (l) l.onclick = e => { e.preventDefault(); if (window.WVS) WVS.open(); }; });
+    return panel('pTyped', 'Typed in <b>//</b> house, loans & other investments', badge('static', 'Your numbers'), rows.join('') +
+      `<div class="xs dim" style="margin-top:.5rem">${est ? '“estimate” follows the official house price index of the country (Eurostat) from your purchase price, it is not a valuation. ' : ''}<a href="#" id="tySetup">Edit in Setup</a></div>`, { style: 'flex:1' });
+  }
   function acctRaw(d, kinds) { const b = d.balances; return { axis: b.months, kind: 'stock', series: kinds.map(([k, n, c]) => ({ n, c, v: b[k], type: 'line' })) }; }
   function pSrc(d) {
     const t = d.totals, ap = d.apartment, rows = [];   /* ap / wiwin / examplefund are absent when their module is off */
@@ -470,7 +486,7 @@
     add('paypal', 'PayPal', t.paypal == null ? 'balance unknown (export too old)' : 'balance', t.paypal, srcBadge('paypal', d)); fns.push(() => infoModal('PayPal', '<p class="dim">PayPal only provides balances through the activity export (Download.CSV). Download a new one into the PayPal folder to include it.</p>'));
     add('gls', 'GLS Depot', (d.depot ? d.depot.positions.length : 0) + ' positions', d.depot && d.depot.total, srcBadge('depot', d)); fns.push(() => openSec());
     add('coinbase', 'Coinbase', (d.crypto ? d.crypto.holdings.length : 0) + ' assets', d.crypto && d.crypto.total_eur, srcBadge('coinbase', d)); fns.push(() => openCrypto());
-    if ('examplefund' in d) { add('examplefund', 'Example Fund I', 'venture fund', d.examplefund && d.examplefund.personal.nav, srcBadge('examplefund', d)); fns.push(() => openWF()); }
+    if ('examplefund' in d) { add('examplefund', fundTitle(d), 'venture fund', d.examplefund && d.examplefund.personal.nav, srcBadge('examplefund', d)); fns.push(() => openWF()); }
     if (d.wiwin) { add('wiwin', 'wiwin · ' + d.wiwin.issuer, 'crowd investment', d.wiwin.invested, srcBadge('wiwin', d)); fns.push(() => $('#altW') && $('#altW').click()); }
     if (ap) { add('~house', ap.address.split(',')[0], ap.sqm + ' sqm · benchmark value', ap.value_used, badge(d.mode === 'demo' ? 'demo' : 'model', d.mode === 'demo' ? 'Demo' : 'Model')); fns.push(() => openApt()); }
     POST.push(() => $$('#pSrc .tr[data-i]').forEach(r => r.onclick = () => fns[+r.dataset.i]()));
@@ -830,7 +846,7 @@
   }
   function heatWF() {
     const d = S.D, w = d.examplefund; if (!w) return;
-    openHeat({ title: 'Example Fund I portfolio', badge: srcBadge('examplefund', d), sizeLabel: 'fair value',
+    openHeat({ title: fundTitle(d) + ' portfolio', badge: srcBadge('examplefund', d), sizeLabel: 'fair value',
       metrics: [{ k: 'moic', label: 'MOIC vs. cost', scale: 100 }],
       build: () => { const by = {}; w.companies.forEach(c => { (by[c.industry || 'Other'] = by[c.industry || 'Other'] || []).push({ id: c.name, label: c.name, size: c.fair_value, chg: (c.moic - 1) * 100, sub: A(c.fair_value), tip: `${c.name}: ${eur(c.fair_value)} · ${c.moic.toFixed(2)}x` }); });
         return { groups: Object.keys(by).map(k => ({ name: k, items: by[k] })) }; } });
@@ -856,7 +872,7 @@
   function openWF() {
     const d = S.D, w = d.examplefund, lg = window.WF_LOGOS || {}, inds = [...new Set(w.companies.map(c => c.industry))].sort(); let ind = 'ALL', sort = 'fair_value';
     const html = () => { const cs = w.companies.filter(c => ind === 'ALL' || c.industry === ind).sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : (b[sort] - a[sort])); return cs.map(c => `<div class="cc" data-slug="${esc(c.slug)}" title="Click for details"><div class="top"><div class="lgw">${lg[c.slug] ? `<img src="${lg[c.slug]}" alt="">` : ''}</div><div><h5>${esc(c.name)}</h5><span class="chip">${esc(c.industry)}</span><span class="chip" style="border-color:rgba(255,154,61,.5);color:var(--or)">${esc(c.sector)}</span></div></div><p class="bl">${esc(c.blurb)}</p><div class="ft"><span>${esc(c.country)} · since ${esc(c.since)} · <b class="${c.moic >= 1 ? 'pos' : 'neg'}">${c.moic.toFixed(2).replace('.', ',')}x</b> · your look-through <b class="wh amt">${eur(c.look_through)}</b></span><a class="lk" href="${esc(c.web || w.portfolio_url)}" target="_blank" rel="noopener">${c.web ? 'Website' : 'Example Fund'} ↗</a></div></div>`).join(''); };
-    const b = infoModal(`Example Fund I · all ${w.companies.length} portfolio companies`, `<div class="stats"><div>Fund NAV<b>${kfmt(w.fund.nav)} €</b></div><div>Fund TVPI<b>${w.fund.tvpi.toFixed(2).replace('.', ',')}x</b></div><div>Net IRR<b class="${cl(w.fund.net_irr)}">${pct(w.fund.net_irr)}</b></div><div>Portfolio MOIC<b>${w.fund.portfolio_moic.toFixed(2).replace('.', ',')}x</b></div><div>Your share<b>${(w.personal.ownership_pct || 0).toFixed(4).replace('.', ',')} %</b></div><div>Report<b style="font-size:0.96rem">${esc(d.mode === 'demo' ? 'Q2 2026 (EXAMPLE numbers)' : 'Q' + w.report_q + ' ' + w.report_year)}</b></div></div><div class="tools" style="padding:0" id="wft"></div><div class="wfg" id="wfg"></div><p class="xs dim">Descriptions are short summaries from public sources; "look-through" = your share of the fund times the fair value of each company (fund-level numbers, not what you could sell). Where no company website was verified, the link goes to the Example Fund portfolio page.</p>`, srcBadge('examplefund', d));
+    const b = infoModal(`${esc(fundTitle(d))} · all ${w.companies.length} portfolio companies`, `<div class="stats"><div>Fund NAV<b>${kfmt(w.fund.nav)} €</b></div><div>Fund TVPI<b>${w.fund.tvpi.toFixed(2).replace('.', ',')}x</b></div><div>Net IRR<b class="${cl(w.fund.net_irr)}">${pct(w.fund.net_irr)}</b></div><div>Portfolio MOIC<b>${w.fund.portfolio_moic.toFixed(2).replace('.', ',')}x</b></div><div>Your share<b>${(w.personal.ownership_pct || 0).toFixed(4).replace('.', ',')} %</b></div><div>Report<b style="font-size:0.96rem">${esc(d.mode === 'demo' ? 'Q2 2026 (EXAMPLE numbers)' : 'Q' + w.report_q + ' ' + w.report_year)}</b></div></div><div class="tools" style="padding:0" id="wft"></div><div class="wfg" id="wfg"></div><p class="xs dim">Descriptions are short summaries from public sources; "look-through" = your share of the fund times the fair value of each company (fund-level numbers, not what you could sell). Where no company website was verified, the link goes to the Example Fund portfolio page.</p>`, srcBadge('examplefund', d));
     const bar = () => { $('#wft').innerHTML = ['ALL', ...inds].map(i => `<button data-i="${esc(i)}" class="${ind === i ? 'on' : ''}">${esc(i)}</button>`).join('') + '<span class="sep"></span>' + [['fair_value', 'Size'], ['moic', 'MOIC'], ['name', 'A-Z']].map(([k, l]) => `<button data-s="${k}" class="${sort === k ? 'on' : ''}">Sort: ${l}</button>`).join(''); $$('#wft button').forEach(x => x.onclick = () => { if (x.dataset.i) ind = x.dataset.i; if (x.dataset.s) sort = x.dataset.s; bar(); paint(); }); };
     const paint = () => { $('#wfg').innerHTML = html(); fitWfg(); $$('#wfg .cc').forEach(x => x.onclick = e => { if (e.target.closest('a')) return; openCompany(x.dataset.slug); }); };
     bar(); paint();
@@ -889,8 +905,8 @@
       depot: pDepot, alloc: pAlloc, top: pTop, spend: pSpend, flow: pFlow,
       ring: d => `<div id="ringWrap" style="height:43.4rem;flex:none">${ringHTML(d)}${wings(d)}</div><div class="kpis" id="kpiRow" style="grid-template-columns:${kpiCols(d)}">${kpiRow(d)}</div>`,
       gross: pGross, time: d => (window.WVI && WVI.pTime(d)) || '', map: pMap,
-      examplefund: pWF, crypto: pCB, alt: pAlt, sources: pSrc, tips: pTips, unusual: d => (window.WVA && WVA.pUnusual(d)) || '', recent: pRecent,
-      empty: d => panel('pEmpty', 'Nothing to show yet', '', '<div class="empty">No asset classes are set up in this installation. Sources are changed by uninstalling with &quot;delete data&quot; and installing again, or by editing data\\profile.json; then press Refresh data.</div>', { style: 'flex:1' })
+      examplefund: pWF, crypto: pCB, alt: pAlt, typed: pTyped, sources: pSrc, tips: pTips, unusual: d => (window.WVA && WVA.pUnusual(d)) || '', recent: pRecent,
+      empty: d => panel('pEmpty', 'Nothing to show yet', '', '<div class="empty">No asset classes are set up in this installation. Press Setup at the top to add your banks, investments and crypto, or to type in a house, a loan or a fund.</div>', { style: 'flex:1' })
     };
     const prof = S.profile || (window.WVL && WVL.LEGACY), vp = { w: window.innerWidth, h: window.innerHeight };
     /* layout.js missing or broken: fall back to the fixed v1.15 columns so the page still renders */
@@ -927,7 +943,7 @@
     $('#stat').textContent = d.mode === 'demo' ? 'SHOWING EXAMPLE DATA (≈ 10 M EUR)' : 'LIVE QUOTES + COINBASE EVERY 5 MIN · FILES ARE READ ONLY WHEN NEW OR CHANGED';
     document.title = 'WealthView ' + (window.WV_VERSION || '') + (d.mode === 'demo' ? ' (demo)' : '');
   }
-  function lockBtn() { const b = $('#bLock'); b.textContent = S.mode === 'demo' ? '🔒 Real numbers' : 'Show demo'; b.classList.toggle('on', S.mode === 'real'); $('#bRefresh').disabled = S.mode === 'demo'; $('#bRefresh').title = S.mode === 'demo' ? 'Unlock real numbers first' : 'Re-read your files and prices now (R)'; }
+  function lockBtn() { const b = $('#bLock'); b.textContent = S.mode === 'demo' ? '🔒 Real numbers' : 'Show demo'; b.classList.toggle('on', S.mode === 'real'); $('#bRefresh').disabled = S.mode === 'demo'; $('#bSetup').style.display = S.mode === 'demo' ? 'none' : ''; $('#bRefresh').title = S.mode === 'demo' ? 'Unlock real numbers first' : 'Re-read your files and prices now (R)'; }
 
   /* ================================================== unlock / refresh / live */
   /* unlock field: what a keypad key does to the typed value, and whether it submits (pure; free text, no digit filter, no auto-submit) */
@@ -956,10 +972,18 @@
   async function reloadData() {
     const st = $('#stat'); if (st) st.textContent = 'RECALCULATING…';
     try {
-      await api('/api/refresh', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+      /* another refresh may be running (folder watcher, Refresh button): wait for it, then run ours so the new rules are really included */
+      let r = null;
+      for (let i = 0; i < 60; i++) {
+        r = await api('/api/refresh', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+        if (!r || !r.busy) break;
+        await new Promise(res => setTimeout(res, 4000));
+      }
+      if (!r || !r.ok) throw new Error((r && (r.error || r.log)) || 'recalculation did not finish');
       const d = await api('/api/real'); if (d.error) throw new Error(d.error);
       S.D = d; S.lastGen = d.generated; renderAll();
-    } catch (e) { console.error(e); if (st) st.textContent = 'RECALCULATION FAILED - press Refresh data'; }
+      return true;
+    } catch (e) { console.error(e); if (st) st.textContent = 'RECALCULATION FAILED - press Refresh data'; return false; }
   }
   async function loadReal(refresh, first) {
     modalShell('Loading your real numbers', ''); $('#mbody').innerHTML = `<div class="sm" style="padding:2rem 0;text-align:center"><span class="spinner"></span><span id="ldm">${refresh ? 'Re-reading your files, quotes and Coinbase… (20–40 s)' : 'Loading…'}</span></div>`;
@@ -997,6 +1021,7 @@
     $('#bPriv').onclick = () => document.body.classList.toggle('priv'); $('#bFs').onclick = () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => { }); else document.exitFullscreen(); };
     $('#bLock').onclick = () => { if (S.mode === 'demo') { if (S.token) loadReal(false); else lockModal(); } else toDemo(); };
     $('#bRefresh').onclick = () => { if (S.mode === 'real') loadReal(true); };
+    $('#bSetup').onclick = () => { if (S.mode === 'real' && window.WVS) window.WVS.open(); };
     document.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; if (e.key === 'p' || e.key === 'P') document.body.classList.toggle('priv'); if ((e.key === 'r' || e.key === 'R') && S.mode === 'real' && !e.ctrlKey) loadReal(true); if (e.key === 'f' || e.key === 'F') $('#bFs').click(); });
     setInterval(quickUpdate, 300000);
     window.addEventListener('resize', () => { /* frames and charts follow via ResizeObserver */ });

@@ -63,6 +63,10 @@ CREATE TABLE IF NOT EXISTS manual_assets(account_id INTEGER PRIMARY KEY REFERENC
 CREATE TABLE IF NOT EXISTS valuations(
   account_id INTEGER NOT NULL, date TEXT NOT NULL, value REAL NOT NULL, basis TEXT NOT NULL, PRIMARY KEY(account_id, date, basis));
 CREATE TABLE IF NOT EXISTS formats(fingerprint TEXT PRIMARY KEY, kind TEXT NOT NULL, mapping TEXT NOT NULL, confirmed INTEGER DEFAULT 0, created TEXT);
+CREATE TABLE IF NOT EXISTS crypto_tx(
+  ckey TEXT PRIMARY KEY, account_id INTEGER NOT NULL, date TEXT NOT NULL, asset TEXT NOT NULL, side TEXT NOT NULL, qty REAL NOT NULL,
+  price REAL, total REAL, fee REAL, currency TEXT, file_id INTEGER);
+CREATE INDEX IF NOT EXISTS idx_crypto_tx_asset ON crypto_tx(asset, date);
 CREATE TABLE IF NOT EXISTS questions(
   id INTEGER PRIMARY KEY, source_id INTEGER, file TEXT, topic TEXT NOT NULL, options TEXT NOT NULL, answer TEXT,
   status TEXT NOT NULL DEFAULT 'open', created TEXT);
