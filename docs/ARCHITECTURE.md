@@ -1,6 +1,6 @@
 # WealthView – Technical Architecture
 
-**Version v1.18 · 2026-11-12.** The version number lives in one file, `version.js`, and is shown in the dashboard header, browser tab, intro, lock window, installer, `data.json` and the READMEs.
+**Version v1.19 · 2026-11-13.** The version number lives in one file, `version.js`, and is shown in the dashboard header, browser tab, intro, lock window, installer, `data.json` and the READMEs.
 
 ## 1. Overview
 WealthView is a local web application. The dashboard is a single HTML page drawn with plain JavaScript (SVG charts, canvas map, no framework, no build step). It is served to your browser by a small Python program (standard-library `http.server`) that listens on `127.0.0.1` only (default port 8780). The Python side reads bank and broker exports into a local SQLite database, adds public market data, computes every dashboard number into one `data.json`, and hands it to the page only after the password was entered. Nothing is uploaded.
@@ -70,7 +70,13 @@ Status contract: `401` locked, `403` wrong `Host`, `404` unknown route or file, 
 5. Update reminder: per source, the newest data date and whether new files are due; shown as a chip and the first suggestion.
 
 ## 8. Database
-One SQLite file `data/wealthview.db`: `bookings`, `paypal_tx`, `depot_positions`, `trades`, `snapshots` (day, scope, key, value), `spending`, `monthly`, `files`, `file_seen`, `meta`. Imported tables can be rebuilt from your downloads, but **daily snapshots exist nowhere else**: back the file up. It is not encrypted.
+One SQLite file `data/wealthview.db`: `bookings`, `paypal_tx`, `depot_positions`, `trades`, `snapshots` (day, scope, key, value), `spending`, `monthly`, `files`, `file_seen`, `meta`, and since v1.19 `sources` and `accounts` (plus the still empty `manual_assets`, `valuations`, `formats`, `questions` for later versions). Imported tables can be rebuilt from your downloads, but **daily snapshots exist nowhere else**: back the file up. It is not encrypted.
+
+**Sources and accounts (v1.19).** A *source* is one thing the user set up (name, section bank / investment / crypto, type folder / api / manual, folder, reader, options). An *account* is what is found inside a source (kind bank / card / depot / crypto / property / loan / fund / other, an identifier such as the IBAN, currency). One folder can hold several accounts, which is why the two are separate. `bookings.account_id`, `paypal_tx.account_id` and `depot_positions.account_id` point to `accounts.id`; `files.source_id` points to `sources.id`. Code: `data/ingest/db_accounts.py`.
+
+**Schema version and upgrade.** `meta.schema_version` is 2 from v1.19 on; a new database starts there. An older database is upgraded once at the start of a refresh (`data/ingest/db_migrate.py`): backup copy `data/wealthview.db.pre-accounts.bak`, then one transaction that creates the sources from the folders the old version imported, one account per IBAN, links every row and rebuilds `depot_positions` with the key `(account_id, asof, wkn)`. Any error rolls everything back; the refresh continues in the old shape and reports "database upgrade postponed".
+
+**Import from sources.** `db_import` lists the files of all active folder sources by their reader, including sub-folders (4 levels, at most 500 folders per source; hidden folders and links are skipped). A file reachable from two sources belongs to the first; an IBAN is always one account. A source whose folder is missing is reported by name and the others continue. Sources created by the upgrade keep the old reading rules, so the same files are read as before.
 
 ## 9. Ask box
 Page -> `POST /api/ask` -> `ask.answer()` -> local model. The model replies with one SQL `SELECT` or a final answer; the server runs the query (at most a few rounds) and feeds the result back. Guard, enforced server-side: read-only connection, SQLite authorizer allowing only reads, internal tables unreadable, one statement, row and size limits, time limit. The model may request a web search; only the search words leave the PC. `ask.max_tokens` (4096) and `ask.timeout_s` (180) are configurable; an empty reply from a thinking model produces a clear message with a "Details:" line.

@@ -50,6 +50,8 @@ _COUNT_QUERIES = {
     "trades": "SELECT COUNT(*) FROM trades",
     "snapshots": "SELECT COUNT(*) FROM snapshots",
     "files": "SELECT COUNT(*) FROM files",
+    "sources": "SELECT COUNT(*) FROM sources WHERE active=1",
+    "accounts": "SELECT COUNT(*) FROM accounts WHERE active=1 AND source_id IN (SELECT id FROM sources WHERE active=1)",
 }
 
 
