@@ -5,18 +5,6 @@
 <p align="center"><em>Your whole portfolio in one Iron-Man-style dashboard. Local-first, read-only, no cloud.</em></p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-v1.18-0a84ff?style=flat-square">
-  <img alt="license" src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square">
-  <img alt="platform" src="https://img.shields.io/badge/platform-Windows-0078d4?style=flat-square&logo=windows">
-  <img alt="python" src="https://img.shields.io/badge/python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white">
-  <img alt="dependencies" src="https://img.shields.io/badge/dependencies-none-orange?style=flat-square">
-  <img alt="javascript" src="https://img.shields.io/badge/frontend-vanilla%20JS-f7df1e?style=flat-square&logo=javascript&logoColor=black">
-  <img alt="sqlite" src="https://img.shields.io/badge/database-SQLite-003b57?style=flat-square&logo=sqlite&logoColor=white">
-  <img alt="local first" src="https://img.shields.io/badge/local--first-no%20cloud-2ea44f?style=flat-square&logo=homeassistant&logoColor=white">
-  <a href="#-code-quality"><img alt="desloppify score" src="https://img.shields.io/badge/desloppify-82.7%20(strict%2078.7)-7a8f45?style=flat-square"></a>
-  <img alt="tested in germany" src="https://img.shields.io/badge/tested%20in-Germany%20only-dd0000?style=flat-square">
-</p>
-<p align="center">
   <a href="docs/screenshots/01-hud.png"><img src="docs/screenshots/01-hud.png" alt="WealthView dashboard at 5120x1440 (demo mode, invented numbers)" width="100%"></a>
   <br><sub>The dashboard at 5120x1440. Click the image to see it full size.</sub>
 </p>
@@ -37,6 +25,18 @@ It is the sibling of [IronMan-JARVIS](https://github.com/ChrisMan4000/IronMan-JA
   </a>
   <br>
   <sub><a href="https://github.com/ChrisMan4000/WealthView/releases">all releases</a> &middot; SHA-256 below</sub>
+</p>
+<p align="center">
+  <img alt="version" src="https://img.shields.io/badge/version-v1.18-0a84ff?style=flat-square">
+  <img alt="license" src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square">
+  <img alt="platform" src="https://img.shields.io/badge/platform-Windows-0078d4?style=flat-square&logo=windows">
+  <img alt="python" src="https://img.shields.io/badge/python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white">
+  <img alt="dependencies" src="https://img.shields.io/badge/dependencies-none-orange?style=flat-square">
+  <img alt="javascript" src="https://img.shields.io/badge/frontend-vanilla%20JS-f7df1e?style=flat-square&logo=javascript&logoColor=black">
+  <img alt="sqlite" src="https://img.shields.io/badge/database-SQLite-003b57?style=flat-square&logo=sqlite&logoColor=white">
+  <img alt="local first" src="https://img.shields.io/badge/local--first-no%20cloud-2ea44f?style=flat-square&logo=homeassistant&logoColor=white">
+  <a href="#-code-quality"><img alt="desloppify score" src="https://img.shields.io/badge/desloppify-82.7%20(strict%2078.7)-7a8f45?style=flat-square"></a>
+  <img alt="tested in germany" src="https://img.shields.io/badge/tested%20in-Germany%20only-dd0000?style=flat-square">
 </p>
 
 ## ⬇️ Download
