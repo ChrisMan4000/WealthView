@@ -7,6 +7,7 @@ The version number lives in one file, `version.js`, and is shown in the dashboar
 - **Automatic CSV reader** for bank, card, depot and crypto exports of any layout, with one plain question when unsure (remembered per layout).
 - **Typed-in assets:** house or apartment (value follows the Eurostat house price index, labelled "estimate", or your own value), loan (annuity), fund, other investment, and typed balances. They flow into net worth, totals and the new "Typed in" box. New server endpoints `/api/setup/*`.
 - **Fix categories:** a correction is passed on to all bookings of the same company (except clearly different amounts); long lists update reliably; "Update dashboard now".
+- Depot and crypto boxes for files read by the automatic reader (the old GLS / Coinbase setup is used first when present).
 - `fund_title` setting for the fund panel name. Installer: no pre-filled bank names; texts point to Setup.
 - Demo mode and the screenshots show invented fund figures; the fund is called "Example Fund".
 
