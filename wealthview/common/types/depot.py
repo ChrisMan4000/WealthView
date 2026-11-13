@@ -125,6 +125,7 @@ class CryptoBlock(TypedDict, total=False):
     gain: float | None
     gain_pct: float | None
     asof: str
+    source: str                                # "database" when the block was built from files the automatic reader stored
     stale: bool                                # True when these are the last known balances (the API call failed)
 
 

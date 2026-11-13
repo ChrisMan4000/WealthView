@@ -9,8 +9,8 @@ Parsers (gls_parse.py) are pure and raise ValueError; the loader that calls them
 Reads the source folders READ-ONLY.
 """
 from __future__ import annotations
-from typing import Any, Literal, cast
-import csv, json, os, re, shutil, subprocess  # nosec B404 - only runs node on the bundled coinbase_fetch.mjs
+from typing import Any, Callable, Literal, cast
+import csv, json, os, re, shutil, sqlite3, subprocess  # nosec B404 - only runs node on the bundled coinbase_fetch.mjs
 import datetime as dt
 from collections import defaultdict
 from pathlib import Path
@@ -21,7 +21,8 @@ from ...common import safenet
 from ...common.fileio import write_atomic
 from ...common.types.bookings import BookingRow
 from ...common.types.datajson import ExampleFund
-from ...common.types.depot import AssetGroup, CryptoBlock, Depot, DepotPosition, ParsedPosition
+from ...common.types.depot import AssetGroup, CryptoBlock, Depot, DepotMeta, DepotPosition, Holding, ParsedPosition
+from . import quotes
 from .gls_parse import file_name_date, parse_gls_text, parse_depot, depot_file_date
 from ...common.paths import data_path
 from ...common.config import setting
@@ -142,14 +143,24 @@ def load_depot(ctx: RunContext) -> Depot | None:
     except (OSError, ValueError, KeyError, TypeError, csv.Error) as e:
         ctx.set_status("depot", "off", f"cannot read {files[0].name}: {e}")
         return None
+    out = _build_depot(ctx, pos, meta, asof, files[0].name)
+    if raw.get("prev"):
+        pv = raw["prev"]
+        out["prev"] = dict(asof=pv["asof"], total=round2(pv["meta"].get("total")), gain=round2(pv["meta"].get("gain")), file=pv["file"])
+    _depot_alerts(ctx, out, asof)
+    return out
+
+
+def _build_depot(ctx: RunContext, pos: list[ParsedPosition], meta: DepotMeta, asof: dt.date, file: str) -> Depot:
+    """the Depot block from parsed positions (a depot file or the database): weights, classes, themes, concentration"""
     positions = [_depot_position(p) for p in pos]
     total = meta.get("total") or sum(x["value"] for x in positions)
     for x in positions:
         x["weight"] = round2(x["value"] / total * 100) if total else 0
     positions.sort(key=lambda x: -x["value"])
     wsorted = sorted([x["value"] / total for x in positions], reverse=True) if total else []
-    out = Depot(
-        asof=asof.isoformat(), file=files[0].name, total=round2(total), gain=round2(meta.get("gain")),
+    return Depot(
+        asof=asof.isoformat(), file=file, total=round2(total), gain=round2(meta.get("gain")),
         gain_pct=round2(meta.get("gain_pct")), cost=round2(total - (meta.get("gain") or 0)),
         positions=positions,
         classes=_value_by(positions, "cls"),
@@ -158,11 +169,85 @@ def load_depot(ctx: RunContext) -> Depot | None:
         top3=round2(sum(wsorted[:3]) * 100) if wsorted else None,
         hhi=int(sum((w * 100) ** 2 for w in wsorted)) if wsorted else None,
     )
-    if raw.get("prev"):
-        pv = raw["prev"]
-        out["prev"] = dict(asof=pv["asof"], total=round2(pv["meta"].get("total")), gain=round2(pv["meta"].get("gain")), file=pv["file"])
+
+
+_DEPOT_DB_SQL = ("SELECT p.wkn, p.name, p.qty, p.price, p.value, p.gain, p.asof FROM depot_positions p "
+                 "JOIN accounts a ON a.id = p.account_id JOIN sources s ON s.id = a.source_id "
+                 "WHERE s.active = 1 AND p.asof = (SELECT MAX(q.asof) FROM depot_positions q WHERE q.account_id = p.account_id)")
+
+
+def load_depot_db(ctx: RunContext, conn: sqlite3.Connection) -> Depot | None:
+    """The depot from the database (positions the automatic reader stored): the newest export of every depot of an active source; the
+    same security in two depots is added up. None when there are none."""
+    rows = conn.execute(_DEPOT_DB_SQL).fetchall()
+    if not rows:
+        return None
+    merged: dict[str, ParsedPosition] = {}
+    for wkn, name, qty, price, value, gain, _asof in rows:
+        m = merged.get(wkn)
+        if m is None:
+            merged[wkn] = ParsedPosition(raw=name or wkn, wkn=wkn, qty=qty, price=price, value=value, gain=gain,
+                                         gain_pct=None)
+        else:
+            m["qty"] = (m["qty"] or 0) + (qty or 0)
+            m["value"] = (m["value"] or 0) + (value or 0)
+            m["gain"] = (m["gain"] or 0) + (gain or 0)
+    pos = list(merged.values())
+    for m in pos:
+        cost = (m["value"] or 0) - (m["gain"] or 0)
+        m["gain_pct"] = round(m["gain"] / cost * 100, 2) if m["gain"] is not None and cost > 0 else None
+    total = sum(p["value"] or 0 for p in pos)
+    gain = sum(p["gain"] or 0 for p in pos)
+    asof = dt.date.fromisoformat(max(r[6] for r in rows)[:10])
+    cost = total - gain
+    out = _build_depot(ctx, pos, DepotMeta(total=total, gain=gain, gain_pct=round(gain / cost * 100, 2) if cost > 0 else None), asof, "database")
     _depot_alerts(ctx, out, asof)
     return out
+
+
+def _cb_tx(r: Any) -> dict[str, Any]:
+    """one stored crypto row -> the flattened Coinbase transaction the cost basis reads (priced only when it was paid in EUR)"""
+    sign = 1 if r["side"] == "buy" else -1
+    total = r["total"] if r["total"] is not None else (r["price"] or 0) * r["qty"]
+    return dict(type=r["side"], date=r["date"], qty=sign * abs(r["qty"]), native=sign * abs(total) if total else None, native_cur=r["currency"] or "EUR")
+
+
+def _spot_eur(asset: str) -> float | None:
+    """latest EUR price of a coin from the public price service (None when it cannot be had)"""
+    try:
+        meta, _, _ = quotes.ychart(f"{asset}-EUR")
+        p = meta.get("regularMarketPrice")
+        return float(p) if p is not None else None
+    except quotes.MARKET_ERRORS as e:
+        safenet.swallowed("crypto price", e)
+        return None
+
+
+def load_crypto_db(ctx: RunContext, conn: sqlite3.Connection, price_of: Callable[[str], float | None] = _spot_eur) -> CryptoBlock | None:
+    """The crypto block from the database (buys and sells the automatic reader stored for active sources): balance = buys - sells per coin,
+    transactions kept for the FIFO cost. None when nothing is held."""
+    rows = conn.execute("SELECT t.asset, t.side, t.qty, t.price, t.total, t.currency, t.date FROM crypto_tx t JOIN accounts a ON a.id = t.account_id "
+                        "JOIN sources s ON s.id = a.source_id WHERE s.active = 1 ORDER BY t.date, t.ckey").fetchall()
+    if not rows:
+        return None
+    held: dict[str, float] = defaultdict(float)
+    txs: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for r in rows:
+        asset = r[0]
+        held[asset] += (1 if r[1] == "buy" else -1) * abs(r[2])
+        txs[asset].append(_cb_tx(dict(side=r[1], qty=r[2], price=r[3], total=r[4], currency=r[5], date=r[6])))
+    holdings: list[Holding] = []
+    for asset, amount in sorted(held.items()):
+        if amount <= 1e-9:
+            continue
+        price = price_of(asset)
+        holdings.append(Holding(currency=asset, amount=round(amount, 10), price=price or 0.0, eur=round2(amount * price) if price else 0.0))
+    if not holdings:
+        return None
+    holdings.sort(key=lambda h: -h["eur"])
+    ctx.set_status("coinbase", "ok", f"{len(holdings)} assets, from your files")
+    return CryptoBlock(ok=True, holdings=holdings, total_eur=round2(sum(h["eur"] for h in holdings)), txs=dict(txs), trades_status="ok",
+                       asof=now().isoformat(timespec="seconds"), source="database")
 
 
 # ---------------------------------------------------------------- Coinbase

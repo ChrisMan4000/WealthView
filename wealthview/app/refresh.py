@@ -98,7 +98,7 @@ class Run:
     (reading it earlier raises AttributeError, so a wrong stage order cannot go unnoticed)."""
     ctx: RunContext
     profile: Profile
-    conn: sqlite3.Connection | None
+    conn: sqlite3.Connection | None = None
     sync_rep: SyncReport | None
     rows: list[BookingRow]
     gls: GlsBlock | None
@@ -156,7 +156,7 @@ def stage_gls_and_flows(r: Run) -> None:
 
 
 def stage_depot(r: Run) -> None:
-    r.depot = refresh_stages.load_depot_with_trades(r.ctx, r.rows)
+    r.depot = refresh_stages.load_depot_with_trades(r.ctx, r.rows, r.conn)
 
 
 def stage_save_trades(r: Run) -> None:
@@ -165,6 +165,9 @@ def stage_save_trades(r: Run) -> None:
 
 def stage_crypto(r: Run) -> None:
     r.crypto = run_stage(r.ctx, "refresh.stage_crypto", lambda: loaders.load_coinbase(r.ctx), None, status="coinbase", msg="Coinbase could not be read: ")
+    conn = r.conn
+    if not r.crypto and conn:       # no Coinbase API / cache: use the buys and sells the automatic reader stored
+        r.crypto = run_stage(r.ctx, "refresh.stage_crypto_db", lambda: loaders.load_crypto_db(r.ctx, conn), None, status="coinbase", msg="crypto from the database could not be read: ")
     if r.crypto:
         enrich_crypto(r.crypto)
         enrich_crypto_cost(r.crypto)
@@ -282,9 +285,9 @@ STAGES: list[Stage] = [
     Stage("open the database and import new files", stage_open_db, (), ("conn", "sync_rep")),
     Stage("read the GLS bookings", stage_bookings, ("conn",), ("rows",)),
     Stage("GLS block, flow model, balance history", stage_gls_and_flows, ("rows",), ("gls", "flows", "balances")),
-    Stage("depot with live quotes and trades", stage_depot, ("rows",), ("depot",)),
+    Stage("depot with live quotes and trades", stage_depot, ("rows", "conn"), ("depot",)),
     Stage("save the trades", stage_save_trades, ("conn", "rows"), ("trades_saved",)),
-    Stage("Coinbase", stage_crypto, (), ("crypto",)),
+    Stage("Coinbase", stage_crypto, ("conn",), ("crypto",)),
     Stage("Example Fund", stage_examplefund, (), ("examplefund",)),
     Stage("PayPal", stage_paypal, ("conn",), ("paypal",)),
     Stage("apartment and loan models", stage_models, (), ("apartment", "loan")),
