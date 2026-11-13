@@ -10,7 +10,11 @@ from pathlib import Path
 DB_NAME = "wealthview.db"
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2          # 2 (v1.19): sources + accounts; an older database is upgraded once by db_migrate.upgrade()
+
+KINDS = ("bank", "card", "depot", "crypto", "property", "loan", "fund", "other")     # what an account is
+SECTIONS = ("bank", "investment", "crypto")                                          # the three setup steps a source belongs to
+SOURCE_TYPES = ("folder", "api", "manual")                                           # where a source's data comes from
 
 
 SCHEMA = """
@@ -30,8 +34,8 @@ CREATE TABLE IF NOT EXISTS paypal_tx(
   currency TEXT, gross REAL, fee REAL, net REAL, balance REAL, code TEXT, subject TEXT, file_id INTEGER);
 CREATE INDEX IF NOT EXISTS idx_paypal_date ON paypal_tx(date);
 CREATE TABLE IF NOT EXISTS depot_positions(
-  asof TEXT NOT NULL, wkn TEXT NOT NULL, name TEXT, qty REAL, price REAL, value REAL, gain REAL, gain_pct REAL, file_id INTEGER,
-  PRIMARY KEY(asof, wkn));
+  account_id INTEGER NOT NULL DEFAULT 0, asof TEXT NOT NULL, wkn TEXT NOT NULL, name TEXT, qty REAL, price REAL, value REAL, gain REAL,
+  gain_pct REAL, file_id INTEGER, PRIMARY KEY(account_id, asof, wkn));
 CREATE TABLE IF NOT EXISTS trades(
   tkey TEXT PRIMARY KEY, wkn TEXT NOT NULL, date TEXT NOT NULL, side TEXT NOT NULL, qty REAL, price REAL, amount REAL);
 CREATE TABLE IF NOT EXISTS spending(
@@ -47,7 +51,27 @@ CREATE TABLE IF NOT EXISTS cat_overrides(
 CREATE TABLE IF NOT EXISTS snapshots(
   day TEXT NOT NULL, scope TEXT NOT NULL, key TEXT NOT NULL, value REAL, extra REAL, updated_at TEXT,
   PRIMARY KEY(day, scope, key));
+CREATE TABLE IF NOT EXISTS sources(
+  id INTEGER PRIMARY KEY, name TEXT NOT NULL, section TEXT NOT NULL, source_type TEXT NOT NULL,
+  folder TEXT, connector TEXT, reader TEXT NOT NULL DEFAULT 'auto', options TEXT,
+  active INTEGER NOT NULL DEFAULT 1, created TEXT, legacy_key TEXT UNIQUE);
+CREATE TABLE IF NOT EXISTS accounts(
+  id INTEGER PRIMARY KEY, source_id INTEGER NOT NULL REFERENCES sources(id), name TEXT NOT NULL, kind TEXT NOT NULL,
+  ident TEXT, currency TEXT NOT NULL DEFAULT 'EUR', active INTEGER NOT NULL DEFAULT 1, created TEXT,
+  UNIQUE(source_id, ident));
+CREATE TABLE IF NOT EXISTS manual_assets(account_id INTEGER PRIMARY KEY REFERENCES accounts(id), fields TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS valuations(
+  account_id INTEGER NOT NULL, date TEXT NOT NULL, value REAL NOT NULL, basis TEXT NOT NULL, PRIMARY KEY(account_id, date, basis));
+CREATE TABLE IF NOT EXISTS formats(fingerprint TEXT PRIMARY KEY, kind TEXT NOT NULL, mapping TEXT NOT NULL, confirmed INTEGER DEFAULT 0, created TEXT);
+CREATE TABLE IF NOT EXISTS questions(
+  id INTEGER PRIMARY KEY, source_id INTEGER, file TEXT, topic TEXT NOT NULL, options TEXT NOT NULL, answer TEXT,
+  status TEXT NOT NULL DEFAULT 'open', created TEXT);
 """
+
+_HAS_DATA = ("SELECT 1 FROM bookings LIMIT 1", "SELECT 1 FROM paypal_tx LIMIT 1", "SELECT 1 FROM depot_positions LIMIT 1")   # any hit: not "new"
+_NEW_COLUMNS = (("bookings", "account_id", "ALTER TABLE bookings ADD COLUMN account_id INTEGER"),
+                ("paypal_tx", "account_id", "ALTER TABLE paypal_tx ADD COLUMN account_id INTEGER"),
+                ("files", "source_id", "ALTER TABLE files ADD COLUMN source_id INTEGER"))
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
@@ -68,10 +92,40 @@ def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
     conn.commit()
 
 
+def has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    return any(r[0] == column for r in conn.execute("SELECT name FROM pragma_table_info(?)", (table,)))
+
+
+def ensure_schema2(conn: sqlite3.Connection) -> None:
+    """Add the schema-2 columns to the old tables when they are missing (repeatable). depot_positions is rebuilt by db_migrate, not here."""
+    for table, column, sql in _NEW_COLUMNS:
+        if not has_column(conn, table, column):
+            conn.execute(sql)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_bookings_account ON bookings(account_id, date)")
+
+
+def schema_version(conn: sqlite3.Connection) -> int:
+    """1 = the v1.18 shape (no sources / accounts in use), 2 = sources and accounts. Unreadable values count as 1."""
+    try:
+        return int(meta_get(conn, "schema_version") or 1)
+    except ValueError:
+        return 1
+
+
+def _is_new(conn: sqlite3.Connection) -> bool:
+    return not any(conn.execute(sql).fetchone() for sql in _HAS_DATA)
+
+
 def init(conn: sqlite3.Connection) -> None:
+    """Create missing tables. A new, empty database starts at schema 2; one that already holds data keeps its version until db_migrate upgrades it."""
     with transaction(conn):
         conn.executescript(SCHEMA)
-        conn.execute("INSERT OR IGNORE INTO meta(k,v) VALUES('schema_version',?)", (str(SCHEMA_VERSION),))
+        if conn.execute("SELECT 1 FROM meta WHERE k='schema_version'").fetchone() is None:
+            if _is_new(conn):
+                ensure_schema2(conn)
+                meta_set(conn, "schema_version", str(SCHEMA_VERSION))
+            else:
+                meta_set(conn, "schema_version", "1")
 
 
 def meta_get(conn: sqlite3.Connection, k: str, default: str | None = None) -> str | None:

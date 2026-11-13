@@ -2,6 +2,14 @@
 
 The version number lives in one file, `version.js`, and is shown in the dashboard header, browser tab, intro, lock window and installer.
 
+## v1.19 (2026-11-13)
+- Sources and accounts: the database now keeps a neutral list of *sources* (each thing you set up: a bank, an investment, a crypto place, with its folder or API) and of the *accounts* found inside them (current account, card, depot ...). Every booking, payment row and depot position points to its account. First step towards setting up any mix of banks and investments.
+- Any number of source folders; sub-folders are read too (4 levels deep). An existing setup keeps reading exactly the same files as before.
+- An existing database is upgraded automatically on the first refresh: a backup copy `data/wealthview.db.pre-accounts.bak` is written first, then everything changes in one step. If anything fails, nothing is changed and System status says "database upgrade postponed".
+- System status shows the number of sources and accounts; its database line no longer names a bank.
+- Ask answers show **bold** text as bold; small layout fix at the bottom of the grid.
+- The dashboard is otherwise unchanged.
+
 ## v1.18 (2026-11-12)
 - New logo "brain chart": a brain outline whose neurons are the points of a rising chart. New `icons/wealthview.ico` (16 to 256 px) and `icons/wealthview.png`, new installer corner image, new README banner (`assets/banner.png`). No code change.
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json, sqlite3
 from ..common import config, safenet
 from ..common.paths import data_path
+from ..common.profile import load_profile
 from ..common.parsing import iso
 from ..common.runcontext import RunContext, UNCHANGED, db_unchanged_note, run_stage, unchanged_note
 from ..common.timeutil import now, today
@@ -14,7 +15,7 @@ from ..data.finance import catrules
 from ..data.finance.lots import parse_trades
 from ..data.finance.positions import enrich_depot
 from ..data.ingest.loaders import GLS_CACHE_NAME
-from ..data.ingest import db_import, db_queries, db_schema, loaders
+from ..data.ingest import db_import, db_migrate, db_queries, db_schema, loaders
 
 
 DB_ERRORS = (sqlite3.Error, OSError, ValueError, KeyError, TypeError)      # what a failing database read can raise
@@ -28,10 +29,26 @@ def has_data(conn: sqlite3.Connection) -> bool:
         return False
 
 
+def upgrade_db(conn: sqlite3.Connection) -> str | None:
+    """Run the one-time upgrade to sources and accounts when the database is older (v1.19). Returns the reason when it could not be done:
+    the database then keeps working in the old shape and the upgrade is tried again at the next refresh."""
+    try:
+        sources = [vars(s) for s in load_profile().sources]
+    except (OSError, ValueError, TypeError) as e:       # unreadable profile: the folders from config.json still describe the old setup
+        safenet.swallowed("refresh_stages.upgrade_db", e)
+        sources = []
+    if not db_migrate.needs_upgrade(conn):
+        db_migrate.seed(conn, config.load_config(), sources)      # a new install: its folders become sources once
+        return None
+    rep = db_migrate.upgrade(conn, data_path(db_schema.DB_NAME), config.load_config(), sources)
+    return None if rep["ok"] else (rep["error"] or "unknown error")
+
+
 def open_db(ctx: RunContext) -> tuple[sqlite3.Connection | None, SyncReport | None]:
     """(connection, sync report) - imports new files from the watched folders first. (None, None) if the database cannot be used."""
     try:
         conn = db_schema.connect(data_path(db_schema.DB_NAME))
+        postponed = upgrade_db(conn)
         rep: SyncReport
         if has_data(conn) and not db_import.folders_changed(conn, config.load_config()):
             rep = dict(at=now().isoformat(timespec="seconds"), seen=0, unchanged=0, new_files=[], duplicate_files=[], errors=[],
@@ -44,6 +61,8 @@ def open_db(ctx: RunContext) -> tuple[sqlite3.Connection | None, SyncReport | No
             if hf.exists() and not conn.execute("SELECT 1 FROM snapshots LIMIT 1").fetchone():      # one-time import into an empty database
                 db_queries.seed_snapshots_from_history(conn, json.loads(hf.read_text("utf-8-sig")))
         run_stage(ctx, "refresh_stages.open_db", seed_snapshots, None, errors=(OSError, ValueError, KeyError, TypeError, sqlite3.Error))
+        if postponed:
+            ctx.set_status("database", "warn", "database upgrade postponed: " + postponed)
         return conn, rep
     except Exception as e:      # broad on purpose: the database is optional, the refresh falls back to reading the files
         safenet.log.warning("database not usable: %s", e)

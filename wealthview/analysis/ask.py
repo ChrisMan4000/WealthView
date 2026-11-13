@@ -16,7 +16,7 @@ LM_DEFAULT_URL = "http://127.0.0.1:1234/v1"      # LM Studio's local server
 MAX_ROWS = 100
 MAX_CHARS = 6000
 TIME_LIMIT_S = 3.0
-HIDDEN_TABLES = {"meta", "file_seen", "sqlite_sequence"}
+HIDDEN_TABLES = {"meta", "file_seen", "sqlite_sequence", "formats", "questions"}
 # SQLite authorizer action codes. Named here because sqlite3.SQLITE_SELECT etc. only exist from Python 3.11 and we support 3.10.
 SQLITE_READ, SQLITE_SELECT, SQLITE_FUNCTION, SQLITE_RECURSIVE = 20, 21, 31, 33
 _OK_ACTIONS = {SQLITE_SELECT, SQLITE_READ, SQLITE_FUNCTION, SQLITE_RECURSIVE}      # nothing else may run
@@ -96,6 +96,7 @@ GUIDE = """You are {owner}'s personal wealth analyst and investment adviser. You
 - spending = real spending only (no income, no transfers, no card settlements, no investments), already categorised.
 - monthly(month, item, amount): item is income, expense, savings or cat:<category>; amounts positive.
 - bookings = every bank booking (kind: giro / card / tages / shares); paypal_tx = PayPal activity; depot_positions = securities per export date; trades = buys/sells.
+- sources = what the user set up (name, section bank / investment / crypto); accounts = the accounts inside a source (kind: bank / card / depot / crypto ...); bookings.account_id, paypal_tx.account_id and depot_positions.account_id point to accounts.id.
 - snapshots = values recorded on each refresh: scope total (key gross, net, net_after_tax, liabilities), class, position (key = WKN), coin. Only since WealthView started recording."""
 
 

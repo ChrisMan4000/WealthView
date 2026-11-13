@@ -29,12 +29,17 @@ class SourceStatus(_SourceStatusRequired, total=False):
     model: bool
 
 
-class ImportedFile(TypedDict):
-    """one newly imported file in a SyncReport"""
+class _ImportedFileRequired(TypedDict):
     name: str
     source: str
     rows: int
     new: int
+
+
+class ImportedFile(_ImportedFileRequired, total=False):
+    """one newly imported file in a SyncReport; source = the import kind (gls / depot / paypal / csv), source_name = the user's name of the
+    source the file belongs to (v1.19; absent while a database has no sources)"""
+    source_name: str
 
 
 class _SyncReportRequired(TypedDict):
