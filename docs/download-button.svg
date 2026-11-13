@@ -18,6 +18,6 @@
   <g fill="none" stroke="#02060b" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
     <path d="M70 34 v26 M59 50 l11 11 l11 -11 M57 72 h26"/>
   </g>
-  <text x="100" y="58" font-family="Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace" font-size="28" font-weight="700" textLength="410" lengthAdjust="spacingAndGlyphs" fill="#02060b">INSTALL WEALTHVIEW</text>
-  <text x="101" y="80" font-family="Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace" font-size="13" textLength="410" lengthAdjust="spacingAndGlyphs" fill="#02060b" fill-opacity=".75">WINDOWS  ·  WealthView-Setup-public.exe  ·  3.1 MB</text>
+  <text x="100" y="58" font-family="Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace" font-size="28" font-weight="700" textLength="369" lengthAdjust="spacingAndGlyphs" fill="#02060b">INSTALL WEALTHVIEW</text>
+  <text x="101" y="80" font-family="Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace" font-size="13" textLength="395" lengthAdjust="spacingAndGlyphs" fill="#02060b" fill-opacity=".75">WINDOWS  ·  WealthView-Setup-public.exe  ·  3.1 MB</text>
 </svg>
