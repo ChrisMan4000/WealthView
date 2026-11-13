@@ -9,7 +9,7 @@
   const eur = v => nf0.format(Math.round(v)) + ' €';
   const SONST = 'Sonstiges', JSONH = { 'content-type': 'application/json' };
   const label = c => c === SONST ? 'Unsorted' : c;
-  let D = null, pending = 0, sel = null, tab = 'fix', only = 'sonstiges', q = '', onKey = null;
+  let D = null, note = '', pending = 0, sel = null, tab = 'fix', only = 'sonstiges', q = '', onKey = null;
 
   const colOf = c => { const P = W().PAL; if (c === SONST) return '#6c8392'; let h = 0; for (const ch of c) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return P[h % P.length]; };
   async function get() { const r = await W().api('/api/cat/overview?only=' + only + '&q=' + encodeURIComponent(q)); if (!r.ok) throw new Error(r.error || 'could not load'); return r; }
@@ -35,7 +35,8 @@
     const tools = document.getElementById('mtools');
     tools.innerHTML = `<span class="fseg"><button data-t="fix" class="${tab === 'fix' ? 'on' : ''}">Fix</button><button data-t="rules" class="${tab === 'rules' ? 'on' : ''}">My rules (${D.rules.length})</button></span>` +
       (tab === 'fix' ? `<span class="fseg" style="margin-left:.8rem"><button data-o="sonstiges" class="${only === 'sonstiges' ? 'on' : ''}">Unsorted only</button><button data-o="all" class="${only === 'all' ? 'on' : ''}">All merchants</button></span><input id="catQ" type="search" placeholder="Search merchant…" value="${esc(q)}" style="margin-left:.8rem;width:15rem">` : '') +
-      `<span class="dim" id="catSt" style="margin-left:auto">${pending ? pending + ' change' + (pending > 1 ? 's' : '') + ' saved - the dashboard updates when you close' : 'Changes are saved at once'}</span>`;
+      `<span class="dim" id="catSt" style="margin-left:auto">${pending ? pending + ' change' + (pending > 1 ? 's' : '') + ' saved - the dashboard updates when you close' : 'Changes are saved at once'}${note ? ' · ' + note : ''}</span>${pending ? '<button id="catApply" style="margin-left:.6rem">Update dashboard now</button>' : ''}`;
+    const ap = tools.querySelector('#catApply'); if (ap) ap.onclick = async () => { ap.disabled = true; ap.textContent = 'Updating…'; const n = pending; const ok = await W().reloadData(); if (ok) pending = Math.max(0, pending - n); draw(); };
     tools.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; draw(); });
     tools.querySelectorAll('[data-o]').forEach(b => b.onclick = async () => { only = b.dataset.o; try { await reload(); draw(); } catch (e) { err(e); } });
     const qi = tools.querySelector('#catQ'); if (qi) { qi.oninput = () => { clearTimeout(qi.t); qi.t = setTimeout(async () => { q = qi.value; try { await reload(); drawList(); drawSide(); } catch (e) { err(e); } }, 250); }; qi.onkeydown = e => e.stopPropagation(); }
@@ -70,7 +71,7 @@
     const ng = el.querySelector('#catNewGo'), ni = el.querySelector('#catNew'); ni.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') ng.click(); };
     ng.onclick = () => { const v = ni.value.replace(/\s+/g, ' ').trim(); if (v) setMerchant(x, v); };
     const rm = el.querySelector('#catRm'); if (rm) rm.onclick = async e => { e.preventDefault(); try { await post('/api/cat/delete', { id: rule.id }); pending++; await reload(); draw(); } catch (er) { err(er); } };
-    el.querySelectorAll('select[data-k]').forEach(s => s.onchange = async () => { try { await post('/api/cat/set', { scope: 'booking', key: s.dataset.k, category: s.value, name: x.n }); pending++; await reload(); draw(); } catch (er) { err(er); } });
+    el.querySelectorAll('select[data-k]').forEach(s => s.onchange = async () => { try { const r = await post('/api/cat/set', { scope: 'booking', key: s.dataset.k, category: s.value, name: x.n }); pending++; note = r.applied ? 'also applied to ' + r.applied + ' other booking' + (r.applied === 1 ? '' : 's') + ' of ' + x.n + ' (undo with ↺)' : ''; await reload(); draw(); } catch (er) { err(er); } });
     el.querySelectorAll('.bkx').forEach(a => a.onclick = async e => { e.preventDefault(); try { await post('/api/cat/delete', { key: a.dataset.k }); pending++; await reload(); draw(); } catch (er) { err(er); } });
   }
 

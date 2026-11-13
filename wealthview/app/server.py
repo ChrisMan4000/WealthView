@@ -17,11 +17,11 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from ..analysis import advisor, ask, research
-from ..common import audit, config, netlog, paths, safenet
+from ..common import audit, config, folderbrowse, netlog, paths, safenet
 from ..common.bootstrap import bootstrap
 from ..common.profile import load_profile
 from ..data.finance import catrules
-from ..data.ingest import company_info, db_queries, db_rules, db_schema, logo_fetch, logos_online, quotes
+from ..data.ingest import company_info, db_queries, db_rules, db_schema, db_setup, logo_fetch, logos_online, quotes
 from . import auth, jobs, lifetime
 
 LIVE_TTL_S = 20            # live quotes are re-fetched at most this often
@@ -56,7 +56,7 @@ class ServerState:
 
 STATE = ServerState()
 STATIC = {"/": "wealthview.html", "/wealthview.html": "wealthview.html", "/wf_logos.js": "wf_logos.js",
-          "/wv.js": "wv.js", "/layout.js": "layout.js", "/flowpop.js": "flowpop.js", "/catrules.js": "catrules.js", "/analytics.js": "analytics.js", "/insights.js": "insights.js", "/wv_demo.js": "wv_demo.js", "/wf_data.js": "wf_data.js", "/wv-intro.js": "wv-intro.js", "/version.js": "version.js", "/land-110m.json": "vendor/land-110m.json", "/favicon.ico": "icons/wealthview.ico"}
+          "/wv.js": "wv.js", "/layout.js": "layout.js", "/flowpop.js": "flowpop.js", "/catrules.js": "catrules.js", "/setup.js": "setup.js", "/analytics.js": "analytics.js", "/insights.js": "insights.js", "/wv_demo.js": "wv_demo.js", "/wf_data.js": "wf_data.js", "/wv-intro.js": "wv-intro.js", "/version.js": "version.js", "/land-110m.json": "vendor/land-110m.json", "/favicon.ico": "icons/wealthview.ico"}
 # Deny by default: every /api/ route needs a PIN session unless it is listed here, so a new route is protected without anyone
 # having to remember to lock it. Static files are public except the ones in LOCKED_PATHS (answered as an empty script).
 PUBLIC_API = frozenset({"/api/ping", "/api/hb", "/api/bye", "/api/unlock"})
@@ -227,6 +227,13 @@ class RequestHandler(BaseHTTPRequestHandler):
         # what this installation shows (layout.js decides the boxes from it); the source folders stay on the server
         p = load_profile().to_dict()
         p["sources"] = [{"kind": s["kind"], "entity": s["entity"]} for s in p["sources"]]
+        try:      # v1.20: what was set up in the dashboard counts too (a bank added there turns the cash boxes on)
+            with open_data_db() as conn:
+                found, p["typed"] = db_setup.detected_classes(conn), db_setup.has_typed(conn)
+            p["asset_classes"] = [c for c in db_setup.CLASS_ORDER if c in set(p["asset_classes"]) | set(found)]
+        except (sqlite3.Error, OSError, ValueError) as exc:      # no database yet: the installer's choice stands
+            safenet.swallowed("server._api_profile", exc)
+            p["typed"] = False
         return p
 
     @api_boundary(nodes=[])
@@ -261,7 +268,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     "/api/logo": self._api_logo, "/api/company": self._api_company, "/api/research": self._api_research,
                     "/api/netlog": self._api_netlog, "/api/profile": self._api_profile, "/api/src_logos": self._api_src_logos,
                     "/api/ask/status": self._api_ask_status, "/api/unusual_seen": self._api_seen_get,
-                    "/api/cat/overview": self._api_cat_overview}
+                    "/api/cat/overview": self._api_cat_overview, "/api/setup/state": self._api_setup_state, "/api/setup/browse": self._api_setup_browse}
         if path in handlers:
             return self._send(200, handlers[path]())
         self._send(404, {"error": "not found"})
@@ -352,7 +359,50 @@ class RequestHandler(BaseHTTPRequestHandler):
             return self._send(200, self._api_cat_set(body))
         if path == "/api/cat/delete":
             return self._send(200, self._api_cat_delete(body))
+        setup = {"/api/setup/source": self._api_setup_source, "/api/setup/asset": self._api_setup_asset, "/api/setup/balance": self._api_setup_balance,
+                 "/api/setup/answer": self._api_setup_answer}
+        if path in setup:
+            return self._send(200, setup[path](body))
         self._send(404, {"error": "not found"})
+
+    @api_boundary()
+    def _api_setup_state(self) -> dict[str, Any]:
+        """Setup screen: the places the data comes from, the typed assets and accounts, the open questions."""
+        with open_data_db() as conn:
+            return db_setup.state(conn)
+
+    @api_boundary()
+    def _api_setup_browse(self) -> dict[str, Any]:
+        """Folder picker: the sub-folders of ?path= (empty = start places)."""
+        return folderbrowse.browse(param(self._query(), "path", 400))
+
+    @api_boundary()
+    def _api_setup_source(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Setup: add / rename / folder / subfolders / active / delete of one place (a bank, an investment, a crypto place)."""
+        audit.record("setup_source", str(body.get("action")))
+        with open_data_db() as conn:
+            return db_setup.source_action(conn, body)
+
+    @api_boundary()
+    def _api_setup_asset(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Setup: add / update / delete of a typed asset (house, loan, fund, other investment)."""
+        audit.record("setup_asset", str(body.get("action")))
+        with open_data_db() as conn:
+            return db_setup.asset_action(conn, body)
+
+    @api_boundary()
+    def _api_setup_balance(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Setup: the balance of an account whose files carry none."""
+        audit.record("setup_balance")
+        with open_data_db() as conn:
+            return db_setup.balance_action(conn, body)
+
+    @api_boundary()
+    def _api_setup_answer(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Setup: the answer to one open question about a file."""
+        audit.record("setup_answer")
+        with open_data_db() as conn:
+            return db_setup.answer(conn, body)
 
     @api_boundary()
     def _api_cat_overview(self) -> dict[str, Any]:
@@ -364,12 +414,12 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     @api_boundary()
     def _api_cat_set(self, body: dict[str, Any]) -> dict[str, Any]:
-        """Saves one correction: scope 'merchant' (a rule for every booking of that merchant), 'text' (a keyword rule) or 'booking' (one booking only)."""
+        """Saves one correction: scope 'merchant' (a rule for every booking of that merchant), 'text' (a keyword rule) or 'booking' (one booking; it is passed on to the similar bookings of that merchant)."""
         scope, cat = str(body.get("scope") or "merchant"), body.get("category")
         audit.record("category_set", scope)
         with open_data_db() as conn:
             if scope == "booking":
-                db_rules.set_override(conn, body.get("key"), cat, body.get("name"))
+                return {"saved": True, **catrules.correct_booking(conn, str(body.get("key") or ""), str(cat or ""), str(body.get("name") or ""))}
             else:
                 db_rules.add_rule(conn, "text" if scope == "text" else "merchant", body.get("name"), cat)
         return {"saved": True}

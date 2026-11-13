@@ -16,17 +16,18 @@ def compute_totals(data: DataJson) -> None:
     """Fills data["totals"] (asset groups, liabilities, net, tax) and data["tax"] from the already loaded sources."""
     t = data["totals"]
     ap, depot, cb, wf, wiwin = data.get("apartment"), data.get("depot"), data.get("crypto"), data.get("examplefund"), data.get("wiwin")    # absent = module off
-    cash_total = t["giro"] + t["tages"] + t["card"] + t["shares"] + (t["paypal"] or 0)
+    typed = (data.get("assets") or {}).get("totals", {})      # what was typed in or found in the files (v1.20): house, funds, other, typed balances, loans
+    cash_total = t["giro"] + t["tages"] + t["card"] + t["shares"] + (t["paypal"] or 0) + typed.get("cash", 0)
     groups = [
-        AssetGroup(k="Real estate", v=round2(ap["value_used"]) if ap else 0),
-        AssetGroup(k="Securities", v=round2(depot["total"]) if depot else 0),
-        AssetGroup(k="Private equity", v=round2((wf["personal"]["nav"] if wf else 0) + (wiwin["invested"] if wiwin else 0))),
+        AssetGroup(k="Real estate", v=round2((ap["value_used"] if ap else 0) + typed.get("property", 0))),
+        AssetGroup(k="Securities", v=round2((depot["total"] if depot else 0) + typed.get("funds", 0))),
+        AssetGroup(k="Private equity", v=round2((wf["personal"]["nav"] if wf else 0) + (wiwin["invested"] if wiwin else 0) + typed.get("other", 0))),
         AssetGroup(k="Cash", v=round2(cash_total)),
         AssetGroup(k="Crypto", v=round2(cb["total_eur"]) if cb else 0),
     ]
     assets = sum(x["v"] for x in groups)
     loan = data.get("loan")
-    liab = (loan["balance"] if loan else 0) + sum(v for v in config.setting("liabilities", {}).values() if isinstance(v, (int, float)))
+    liab = (loan["balance"] if loan else 0) + typed.get("liabilities", 0) + sum(v for v in config.setting("liabilities", {}).values() if isinstance(v, (int, float)))
     german = load_profile().tax_country == "DE"      # only German rules are modelled: any other country shows "no tax estimate"
     t["assets"] = round2(assets)
     t["groups"] = groups

@@ -86,6 +86,7 @@ class ExampleFund(_ExampleFundRequired, total=False):
     site: str
     newest_report_file: str | None
     update_available: bool
+    title: str
 
 
 class Wiwin(TypedDict, total=False):
@@ -254,6 +255,7 @@ class DataJson(TypedDict, total=False):
     depot: Depot | None
     crypto: CryptoBlock | None
     examplefund: ExampleFund | None
+    assets: dict[str, Any] | None
     paypal: PaypalInfo
     wiwin: Wiwin
     apartment: Apartment

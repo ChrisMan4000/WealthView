@@ -8,7 +8,7 @@ Run by hand:   python refresh.py          (the dashboard's REFRESH button runs i
 """
 from __future__ import annotations
 import json, sqlite3, sys, traceback
-from typing import Callable, NamedTuple
+from typing import Any, Callable, NamedTuple
 from ..common import config
 from ..common.bootstrap import bootstrap
 from ..common.fileio import write_atomic
@@ -20,7 +20,7 @@ from ..common.types.bookings import BalanceHistory, BookingRow, Coverage, FlowMo
 from ..common.types.datajson import Apartment, DataJson, IncomeEstimate, Loan, NwSeries, Reminders, Totals, ExampleFund
 from ..common.types.depot import CryptoBlock, Depot
 from ..common.types.status import SourceStatus, SyncReport
-from ..data.finance import gls_block
+from ..data.finance import assets as typed_assets, gls_block
 from ..data.finance.bookings import balance_history, build_flow_model, spending_rows
 from ..data.finance.models import apartment_model, loan_model, nw_series
 from ..data.finance.positions import enrich_crypto, enrich_crypto_cost, income_estimate
@@ -110,6 +110,7 @@ class Run:
     paypal: PaypalInfo
     apartment: Apartment | None
     loan: Loan | None
+    assets: dict[str, Any] | None
     totals: Totals
     giro: float
     tages: float
@@ -189,6 +190,13 @@ def stage_models(r: Run) -> None:
     r.loan = loan_model() if r.module("loan") else None
 
 
+def stage_assets(r: Run) -> None:
+    """The house, loans, funds and other investments typed in (v1.20) plus typed bank balances; None when there are none."""
+    conn = r.conn
+    r.assets = run_stage(r.ctx, "refresh.stage_assets", lambda: typed_assets.build_assets_block(conn, today()) if conn else None, None,
+                         status="database", msg="your typed assets could not be read: ", errors=DB_ERRORS)
+
+
 def stage_account_totals(r: Run) -> None:
     r.totals, r.giro, r.tages = account_totals(r.gls, r.paypal)
 
@@ -213,7 +221,8 @@ def stage_logos(r: Run) -> None:
 
 def stage_net_worth(r: Run) -> None:
     r.nw = nw_series(r.depot, r.crypto, r.examplefund, r.apartment, r.balances, r.paypal, wiwin=r.module("wiwin"))
-    r.loan_series = r.loan["series"] if r.loan else [0] * len(axis())
+    old_loan = r.loan["series"] if r.loan else [0] * len(axis())
+    r.loan_series = typed_assets.add_to_nw(r.nw, old_loan, r.assets, axis())      # type: ignore[arg-type]      # the typed house, funds and loans join the series
     r.gross, r.net = gross_and_net(r.nw, r.loan_series, len(axis()))
 
 
@@ -244,6 +253,8 @@ def stage_assemble(r: Run) -> None:
         sources=r.sources, alerts=r.ctx.alerts, reminder=cfg.get("reminder"), reminders=build_reminders(r.ctx, r.conn, r.examplefund, r.module("examplefund")),
         apartment_sources=(cfg.get("apartment") or {}).get("sources", []),
     )
+    if r.assets:
+        r.data["assets"] = r.assets      # only when something was typed in or found: an install without typed assets keeps its data.json as it was
     for module, keys in MODULE_BLOCKS.items():       # a module that is off leaves its blocks out of data.json altogether
         if not r.module(module):
             for k in keys:
@@ -277,18 +288,19 @@ STAGES: list[Stage] = [
     Stage("Example Fund", stage_examplefund, (), ("examplefund",)),
     Stage("PayPal", stage_paypal, ("conn",), ("paypal",)),
     Stage("apartment and loan models", stage_models, (), ("apartment", "loan")),
+    Stage("typed assets: house, loans, funds, other", stage_assets, ("conn",), ("assets",)),
     Stage("account totals", stage_account_totals, ("gls", "paypal"), ("totals", "giro", "tages")),
     Stage("income estimate", stage_income, ("depot", "tages"), ("income",)),
     Stage("12-month KPIs from the flow model", stage_flow_kpis, ("gls", "flows"), ("flow_kpis",)),
     Stage("cash runway", stage_runway, ("gls", "giro", "tages"), ("runway",)),
     Stage("merchant and position logos", stage_logos, ("depot", "crypto", "flows", "gls", "flow_kpis"), ("logos",)),
-    Stage("net worth series", stage_net_worth, ("depot", "crypto", "examplefund", "apartment", "loan", "balances", "paypal"),
+    Stage("net worth series", stage_net_worth, ("depot", "crypto", "examplefund", "apartment", "loan", "assets", "balances", "paypal"),
           ("nw", "loan_series", "gross", "net")),
     Stage("database coverage", stage_coverage, ("conn",), ("cov",)),
     Stage("dashboard alerts", stage_alerts, ("sync_rep", "rows", "depot", "gls", "flows", "giro", "cov", "flow_kpis"), ("alerts",)),
     Stage("source status lines", stage_sources, ("depot",), ("sources",)),
     Stage("assemble data.json", stage_assemble, ("totals", "nw", "loan_series", "gross", "net", "gls", "flows", "balances", "depot", "crypto",
-                                                 "examplefund", "paypal", "apartment", "loan", "income", "sources", "alerts", "runway", "logos"), ("data",)),
+                                                 "examplefund", "assets", "paypal", "apartment", "loan", "income", "sources", "alerts", "runway", "logos"), ("data",)),
     Stage("totals, analytics, insights", stage_finish, ("conn", "sync_rep", "rows", "flows", "cov", "data"), ("finished",)),
     Stage("write data.json", stage_write, ("data", "flows", "finished", "trades_saved"), ("written",)),
 ]
