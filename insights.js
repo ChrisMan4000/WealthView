@@ -58,12 +58,14 @@
     const c = b.counts, li = b.last_import, w = W();
     return `<div class="xs dim" style="margin-top:.4rem;border-top:1px solid rgba(60,190,235,.2);padding-top:.35rem">Database <b class="wh">${w.esc(b.file)}</b>${b.size_kb ? ' · ' + nf0.format(b.size_kb) + ' KB' : ''}: <b class="wh">${nf0.format(c.bookings)}</b> bookings${c.bookings_from ? ' (' + w.esc(c.bookings_from) + ' → ' + w.esc(c.bookings_to) + ')' : ''}, <b class="wh">${nf0.format(c.paypal_tx)}</b> PayPal, <b class="wh">${c.snap_days || 0}</b> recorded day${c.snap_days === 1 ? '' : 's'}.` +
       (li ? `<br>Last import: <b class="wh">${(li.new_files || []).length}</b> file(s), ${nf0.format(li.new_bookings || 0)} bookings, ${nf0.format(li.new_paypal || 0)} PayPal · ${w.esc(String(li.at || '').replace('T', ' ').slice(0, 16))}` : '') +
-      `<br>New downloads in your GLS / PayPal folders are imported automatically.</div>`;
+      `<br>${c.sources ? '<b class="wh">' + nf0.format(c.sources) + '</b> source(s), <b class="wh">' + nf0.format(c.accounts || 0) + '</b> account(s). ' : ''}New downloads in your source folders (and their sub-folders) are imported automatically.</div>`;
   }
 
   /* ------------------------------------------------------------------ Ask box (v1.15: fixed bar under the grid, auto-growing box, voice input, sources) */
   const A = { hist: [], busy: false, st: null, stAt: 0, box: null, rec: null };
   function esc(s) { return W().esc(s); }
+  /* v1.17: the model writes **bold**; show it bold (input is already HTML-escaped, so this only adds <b>) */
+  const mdBold = s => String(s).replace(/\*\*([^*\n]+?)\*\*/g, '<b class="wh">$1</b>');
   const safeHref = u => /^https?:\/\//i.test(String(u || '').trim()) ? String(u).trim() : '';
   function askUI() {
     if (document.getElementById('chat')) return;
@@ -137,7 +139,7 @@
     const qs = (out.queries || []).map(x => `<pre>${esc(x.sql)}${x.error ? '\n-- refused: ' + esc(x.error) : '\n-- ' + x.rows + ' row(s)' + (x.truncated ? ', cut off' : '')}</pre>`).join('');
     const srcs = (out.sources || []).filter(s => safeHref(s.url)).map(s => `<a href="${esc(safeHref(s.url))}" target="_blank" rel="noopener noreferrer" title="${esc(s.url)}">${esc(s.title || s.url)}</a>`).join('');
     const searches = (out.searches || []).map(s => esc(s.q)).join(' · ');
-    const html = out.ok ? `<div class="a">${blurAmts(esc(out.answer || ''))}</div>` + (srcs ? `<div class="srcs">Sources: ${srcs}</div>` : '') + (searches ? `<div class="srcs">Searched the web for: ${searches}</div>` : '') : `<div class="a e">${esc(out.error || 'Something went wrong.')}</div>` + (out.detail ? `<div class="srcs">Details: ${esc(String(out.detail).slice(0, 300))}</div>` : '');
+    const html = out.ok ? `<div class="a">${mdBold(blurAmts(esc(out.answer || '')))}</div>` + (srcs ? `<div class="srcs">Sources: ${srcs}</div>` : '') + (searches ? `<div class="srcs">Searched the web for: ${searches}</div>` : '') : `<div class="a e">${esc(out.error || 'Something went wrong.')}</div>` + (out.detail ? `<div class="srcs">Details: ${esc(String(out.detail).slice(0, 300))}</div>` : '');
     if (p) p.outerHTML = html; else addLog(html);
     if (qs) addLog(`<details><summary>${out.queries.length} database quer${out.queries.length === 1 ? 'y' : 'ies'} used - check the answer against these</summary>${qs}</details>`);
     if (out.ok) { A.hist.push({ role: 'user', content: q }, { role: 'assistant', content: out.answer }); A.hist = A.hist.slice(-8); }
