@@ -43,7 +43,7 @@ It is the sibling of [IronMan-JARVIS](https://github.com/ChrisMan4000/IronMan-JA
 
 | | |
 |---|---|
-| **[WealthView-Setup-public.exe](https://github.com/ChrisMan4000/WealthView/releases/latest/download/WealthView-Setup-public.exe)** | Windows setup wizard (Inno Setup), v1.20, about 3.1 MB |
+| **[WealthView-Setup-public.exe](https://github.com/ChrisMan4000/WealthView/releases/latest/download/WealthView-Setup-public.exe)** | Windows setup wizard (Inno Setup), v1.20, about 3.3 MB |
 | SHA-256 | `2443935d9b2e2b96e56dad9f4844c16ee27582890e31b5adb1e2528df3bc23dc` |
 
 The wizard checks your PC (Python 3.10+, optional LM Studio for the Ask box), asks which folders hold your bank exports, your residence (for the tax estimate) and a password (4 to 1024 characters), and adds a desktop shortcut. It appears in *Windows Settings > Apps*; uninstall can keep or delete your data. The public edition contains **no personal data**.
