@@ -28,10 +28,13 @@
   }
 
   function open() {
-    const w = W(); if (!w || w.S.mode !== 'real') return;
+    /* a valid session (token) is enough to manage sources - do NOT require S.mode === 'real', or a broken
+       source that makes /api/real fail (loadReal's catch) would lock the user out of the one screen that
+       can fix it */
+    const w = W(); if (!w || !w.S.token) return;
     css(); pending = 0; tab = 'bank'; note = ''; form = null; pick = null;
     w.modalShell('Setup · where your data comes from', w.badge('static', 'Your setup'), 'fit');
-    const m = document.getElementById('modal'), done = () => { document.removeEventListener('keydown', onKey, true); const n = pending; pending = 0; w.closeModal(); if (n > 0) w.reloadData(); };
+    const m = document.getElementById('modal'), done = () => { document.removeEventListener('keydown', onKey, true); const n = pending; pending = 0; w.closeModal(); if (n > 0) { w.S.mode === 'real' ? w.reloadData() : w.loadReal(false); } };
     document.getElementById('mx').onclick = done; m.onclick = e => { if (e.target === m) done(); };
     onKey = e => { if (!root()) { document.removeEventListener('keydown', onKey, true); return; } if (e.key === 'Escape' && !(e.target && e.target.tagName === 'INPUT')) done(); };
     document.addEventListener('keydown', onKey, true);
