@@ -993,7 +993,7 @@
       try { const lg = await api('/api/src_logos'); if (lg && !lg.error) window.SRC_LOGOS = lg; } catch (e) { /* logos are optional: missing ones are fetched one by one */ }
       try { const pr = await api('/api/profile'); if (pr && !pr.error) S.profile = pr; } catch (e) { if (e.locked) throw e; /* no profile: the legacy layout stays */ }
       S.D = d; S.lastGen = d.generated; S.mode = 'real'; S.liveAt = null; closeModal(); renderAll(); mapPoll(); playIntro(refresh ? 1.6 : (first ? 1 : 1.3)); setTimeout(logoCheck, 300);
-    } catch (e) { if (e.locked) { closeModal(); toDemo(); lockModal(); return; } $('#mbody').innerHTML = `<div class="or sm" style="padding:1rem">Could not load real data: ${esc(e.message)}<br><br><button id="bk">Back to demo</button></div>`; $('#bk').onclick = () => { closeModal(); toDemo(); }; }
+    } catch (e) { if (e.locked) { closeModal(); toDemo(); lockModal(); return; } $('#mbody').innerHTML = `<div class="or sm" style="padding:1rem">Could not load real data: ${esc(e.message)}<br><br><button id="bkSetup">Open setup</button> <button id="bk">Back to demo</button></div>`; $('#bk').onclick = () => { closeModal(); toDemo(); }; $('#bkSetup').onclick = () => { if (window.WVS) window.WVS.open(); }; }
   }
   function toDemo() { S.mode = 'demo'; S.profile = null; S.D = S.DEMO; renderAll(); mapPoll(); }
   async function quickUpdate() {
@@ -1026,6 +1026,6 @@
     setInterval(quickUpdate, 300000);
     window.addEventListener('resize', () => { /* frames and charts follow via ResizeObserver */ });
   }
-  window.WV = { wfgLayout, pSrc, pAlt, S, panel, infoModal, modalShell, TS, A, eur, pct, cl, esc, badge, srcBadge, logo, renderAll, POST, $, $$, kfmt, openMerchant, openBookings, openTS, api, server, PAL, GREY, MON, redrawFlowBox, closeModal, reloadData, lockInput, lockModal };
+  window.WV = { wfgLayout, pSrc, pAlt, S, panel, infoModal, modalShell, TS, A, eur, pct, cl, esc, badge, srcBadge, logo, renderAll, POST, $, $$, kfmt, openMerchant, openBookings, openTS, api, server, PAL, GREY, MON, redrawFlowBox, closeModal, reloadData, loadReal, lockInput, lockModal };
   window.addEventListener('DOMContentLoaded', init);
 })();
