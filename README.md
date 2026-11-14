@@ -59,7 +59,7 @@ The wizard checks your PC (Python 3.10+, optional LM Studio for the Ask box), as
 - 🪙 **Crypto:** Coinbase balances with FIFO cost basis (view-only API key)
 - 💸 **Cash flow:** categories you can fix with editable rules, Sankey pop-up, unusual-booking alerts
 - 🧮 **Portfolio analysis:** performance, risk, exposure, liquidity, tax (Germany), costs and income
-- 💬 **Ask your data:** questions answered by a local model (LM Studio) that writes read-only queries
+- 💬 **Ask your data:** questions answered by a free local model that writes read-only queries, run through [LM Studio](https://lmstudio.ai): download any of the latest open-source LLMs from Meta, Google, Microsoft, OpenAI, Alibaba or Mistral and use them at no cost
 - 🌐 **Network map:** every outbound connection WealthView itself makes, host and time only
 - 🔔 **Update reminder** chip when new bank exports are due, automatic import of new files
 - 🙈 **Privacy blur**, demo mode, keyboard shortcuts (P blur, R refresh, F fullscreen, Esc close)
