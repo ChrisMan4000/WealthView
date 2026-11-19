@@ -6,11 +6,11 @@ import json, sqlite3
 from pathlib import Path
 from typing import Any
 
-from . import db_accounts, db_assets, db_questions
+from . import connectors, db_accounts, db_assets, db_questions, keystore
 from .db_schema import SECTIONS, transaction
 
 MAX_NAME = 80
-ACTIONS = ("add", "rename", "folder", "subfolders", "active", "delete")
+ACTIONS = ("add", "rename", "folder", "subfolders", "active", "delete", "keys")
 
 
 def _name(v: Any) -> str:
@@ -36,18 +36,29 @@ def _source(conn: sqlite3.Connection, sid: Any) -> db_accounts.SourceRow:
     raise ValueError("this place is not in your list (any more)")
 
 
+def _connector(cid: Any, section: str) -> connectors.Connector:
+    con = connectors.BY_ID.get(" ".join(str(cid or "").split()))
+    if con is None:
+        raise ValueError("please say which service to read from")
+    if section not in con["sections"]:
+        raise ValueError(f"{con['label']} cannot be used here")
+    return con
+
+
 def state(conn: sqlite3.Connection) -> dict[str, Any]:
     """{sources, assets, accounts, questions}: everything the setup screen needs in one go."""
     counts = {r[0]: r[1] for r in conn.execute("SELECT source_id, COUNT(*) FROM accounts GROUP BY source_id")}
     sources = [dict(id=s["id"], name=s["name"], section=s["section"], source_type=s["source_type"], folder=s["folder"], connector=s["connector"],
-                    active=s["active"], subfolders=s["options"].get("subfolders", True) is not False, accounts=counts.get(s["id"], 0))
+                    active=s["active"], subfolders=s["options"].get("subfolders", True) is not False, accounts=counts.get(s["id"], 0),
+                    has_keys=s["source_type"] == "api" and keystore.has(s["id"]))
                for s in db_accounts.list_sources(conn, active_only=False) if not s["options"].get("asset")]
     typed = db_assets.typed_balances(conn)
     accounts = [dict(id=a["id"], source_id=a["source_id"], name=a["name"], kind=a["kind"], balance=typed.get(a["id"], (None, None))[0],
                      balance_date=typed.get(a["id"], (None, None))[1])
                 for a in db_accounts.list_accounts(conn) if a["kind"] in ("bank", "card", "depot", "crypto")]
     assets = [dict(a, id=a["account_id"]) for a in db_assets.list_assets(conn)]
-    return dict(sources=sources, assets=assets, accounts=accounts, questions=db_questions.open_questions(conn))
+    return dict(sources=sources, assets=assets, accounts=accounts, questions=db_questions.open_questions(conn),
+                connectors=[connectors.public(c) for c in connectors.CONNECTORS], keys_possible=keystore.available())
 
 
 def source_action(conn: sqlite3.Connection, body: dict[str, Any]) -> dict[str, Any]:
@@ -63,10 +74,16 @@ def source_action(conn: sqlite3.Connection, body: dict[str, Any]) -> dict[str, A
         name = _name(body.get("name"))
         with transaction(conn):
             if api:
-                conn_id = " ".join(str(body.get("connector") or "").split())[:40]
-                if not conn_id:
-                    raise ValueError("please say which service to read from")
-                sid = db_accounts.add_source(conn, name, section, "api", connector=conn_id, reader="auto")
+                con = _connector(body.get("connector"), section)
+                # keys are needed, except when this computer already supplies them (Coinbase through environment variables)
+                keys = connectors.clean_keys(con, body.get("keys"), required=not connectors.env_ready(con))
+                if keys and len(keys) < len(con["fields"]):
+                    connectors.clean_keys(con, keys)                   # some fields filled, some not: name the missing one
+                sid = db_accounts.add_source(conn, name, section, "api", connector=con["id"], reader="auto")
+                if keys:
+                    keystore.save(sid, keys)                           # a failure here undoes the new place (the transaction rolls back)
+                else:
+                    keystore.delete(sid)                               # never inherit keys left behind under a number that is used again
             else:
                 sid = db_accounts.add_source(conn, name, section, "folder", folder=_folder(body.get("folder")), reader="auto")
         return {"id": sid}
@@ -83,11 +100,16 @@ def source_action(conn: sqlite3.Connection, body: dict[str, Any]) -> dict[str, A
             conn.execute("UPDATE sources SET options=? WHERE id=?", (json.dumps(opts), s["id"]))
         elif act == "active":
             db_accounts.set_source_active(conn, s["id"], bool(body.get("on")))
+        elif act == "keys":      # v1.21: new API keys for a place that is read through an API (they replace the stored ones)
+            if s["source_type"] != "api":
+                raise ValueError("this place is not read through an API")
+            keystore.save(s["id"], connectors.clean_keys(_connector(s["connector"], s["section"]), body.get("keys")))
         else:      # delete: a place that already brought in data is only switched off, so nothing you have is lost
             if conn.execute("SELECT 1 FROM accounts WHERE source_id=? LIMIT 1", (s["id"],)).fetchone():
                 db_accounts.set_source_active(conn, s["id"], False)
                 return {"removed": False}
             conn.execute("DELETE FROM sources WHERE id=?", (s["id"],))
+            keystore.delete(s["id"])
             return {"removed": True}
     return {"ok": True}
 

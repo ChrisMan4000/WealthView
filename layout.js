@@ -56,7 +56,16 @@
   function place(profile, vp) {
     profile = profile || LEGACY;
     if (!(profile.asset_classes || []).length) return COLUMNS.map(c => ({ dom: c, boxes: c === '#center' ? ['empty'] : [] }));
-    return COLUMNS.map(c => ({ dom: c, boxes: BOXES.filter(b => b.col === c && wanted(b, profile)).map(b => b.id) }));
+    const cols = COLUMNS.map(c => ({ dom: c, boxes: BOXES.filter(b => b.col === c && wanted(b, profile)).map(b => b.id) }));
+    /* v1.22: on screens that show two columns (or one), the four side columns become two stacks - #c5 + #c1 on the left, #c2 + #c4 on the
+       right. Four columns in a two-column grid sit in two rows, and the shorter column of a row left an empty gap above the next row. */
+    const vt = viewportTier(vp);
+    if (vt === 'laptop' || vt === 'compact') {
+      const by = {}; cols.forEach(c => { by[c.dom] = c; });
+      by['#c5'].boxes = by['#c5'].boxes.concat(by['#c1'].boxes); by['#c1'].boxes = [];
+      by['#c2'].boxes = by['#c2'].boxes.concat(by['#c4'].boxes); by['#c4'].boxes = [];
+    }
+    return cols;
   }
   function pickBoxes(profile, vp) {
     profile = profile || LEGACY;

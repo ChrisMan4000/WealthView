@@ -72,21 +72,21 @@
     const st = document.createElement('style');
     st.textContent = `#chat{position:relative;flex:none;box-sizing:border-box;min-width:0;z-index:30;display:flex;flex-direction:column;gap:.25rem}
 @media (max-aspect-ratio:22/10){#chat{width:auto;margin:0 .9rem .8rem}}
-#chatInfo{display:flex;justify-content:space-between;font-size:0.648rem;letter-spacing:.06em;color:var(--dim);text-transform:uppercase;gap:.6rem;min-width:0}#chatInfo span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#chatInfo span:last-child{flex:0 1 auto}#chatInfo b{color:var(--c2);font-weight:400}
+#chatInfo{display:flex;justify-content:space-between;font-size:max(var(--minfs,0px),0.648rem);letter-spacing:.06em;color:var(--dim);text-transform:uppercase;gap:.6rem;min-width:0}#chatInfo span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#chatInfo span:last-child{flex:0 1 auto}#chatInfo b{color:var(--c2);font-weight:400}
 #log{display:none;position:absolute;left:0;right:0;bottom:100%;margin-bottom:.35rem;max-height:62vh;overflow:auto;box-sizing:border-box;border:1px solid rgba(25,211,255,.35);background:rgba(0,16,26,.96);padding:.5rem .8rem;font-size:0.864rem;line-height:1.45}#log.on{display:block}
 #log .q{color:#fff;margin:.35rem 0 .1rem}#log .q::before{content:"YOU > ";opacity:.5}#log .a{margin:.1rem 0 .3rem;white-space:pre-wrap}#log .a::before{content:"WEALTHVIEW > ";opacity:.6;color:var(--or)}#log .e{color:var(--rd)}
-#log details{font-size:0.72rem;color:var(--dim);margin:0 0 .4rem}#log pre{margin:.2rem 0;white-space:pre-wrap;color:#9fb4c4}#logx{position:absolute;right:.4rem;top:.3rem;padding:0 .4rem}
-#log .srcs{font-size:0.72rem;color:var(--dim);margin:0 0 .5rem}#log .srcs a{color:var(--c2);text-decoration:none;margin-right:.8rem;white-space:nowrap}#log .srcs a:hover{color:var(--or)}
+#log details{font-size:max(var(--minfs,0px),0.72rem);color:var(--dim);margin:0 0 .4rem}#log pre{margin:.2rem 0;white-space:pre-wrap;color:#9fb4c4}#logx{position:absolute;right:.4rem;top:.3rem;padding:0 .4rem}#logdel{position:absolute;right:2.3rem;top:.3rem;padding:0 .4rem;font-size:max(var(--minfs,0px),0.62rem);letter-spacing:.08em;text-transform:uppercase}
+#log .srcs{font-size:max(var(--minfs,0px),0.72rem);color:var(--dim);margin:0 0 .5rem}#log .srcs a{color:var(--c2);text-decoration:none;margin-right:.8rem;white-space:nowrap}#log .srcs a:hover{color:var(--or)}
 #chatBar{display:flex;gap:.5rem;align-items:stretch}#chatBtns{display:flex;flex-direction:column;gap:.3rem;flex:none;width:4.6rem}
 #chatIn{flex:1;min-width:0;box-sizing:border-box;font:inherit;font-size:0.936rem;line-height:1.4;height:3.4rem;max-height:11rem;resize:none;overflow-y:auto;background:rgba(0,16,26,.85);border:1px solid rgba(60,190,235,.45);color:#fff;padding:.4rem .6rem;outline:none;transition:min-height .15s}
 #chatIn:focus{border-color:var(--or)}#chat.act #chatIn{min-height:5.6rem}
 #chatBtns button{flex:1;min-height:1.55rem;padding:.1rem .5rem;width:100%}#chatMic{font-size:1rem;padding:.1rem .4rem !important}#chatMic.on{border-color:var(--rd);color:var(--rd);animation:pl 1s infinite}
-.otchips{display:flex;flex-wrap:wrap;gap:.3rem .8rem;margin-bottom:.3rem;font-size:0.72rem}.otchip b{font-weight:400}
+.otchips{display:flex;flex-wrap:wrap;gap:.3rem .8rem;margin-bottom:.3rem;font-size:max(var(--minfs,0px),0.72rem)}.otchip b{font-weight:400}
 .otg{display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:.4rem;margin-top:.4rem}.otc{border:1px solid rgba(60,190,235,.22);padding:.3rem .45rem;background:rgba(0,20,32,.4)}
-.otn{font-size:0.62rem;letter-spacing:.12em;text-transform:uppercase;color:var(--or);margin-bottom:.2rem}.otv{font-size:0.95rem;color:#fff}.otr{display:flex;justify-content:space-between;gap:.5rem;font-size:0.74rem;padding:.05rem 0}`;
+.otn{font-size:max(var(--minfs,0px),0.62rem);letter-spacing:.12em;text-transform:uppercase;color:var(--or);margin-bottom:.2rem}.otv{font-size:0.95rem;color:#fff}.otr{display:flex;justify-content:space-between;gap:.5rem;font-size:max(var(--minfs,0px),0.74rem);padding:.05rem 0}`;
     document.head.appendChild(st);
     const box = document.createElement('div'); box.id = 'chat';
-    box.innerHTML = '<div id="log"><button id="logx" title="Close">✕</button><div id="logb"></div></div><div id="chatInfo"><span id="chatSt">Ask anything</span><span>your data stays on this PC · web look-ups send only search words</span></div><div id="chatBar"><textarea id="chatIn" rows="1" autocomplete="off" spellcheck="false" maxlength="1500"></textarea><div id="chatBtns"><button id="chatMic" title="Speak your question">🎤</button><button id="chatGo">Ask</button></div></div>';
+    box.innerHTML = '<div id="log"><button id="logdel" title="Delete this chat (the answers shown and what the model remembers of it)">delete chat</button><button id="logx" title="Hide the chat (it is kept until you delete it)">✕</button><div id="logb"></div></div><div id="chatInfo"><span id="chatSt">Ask anything</span><span>your data stays on this PC · web look-ups send only search words</span></div><div id="chatBar"><textarea id="chatIn" rows="1" autocomplete="off" spellcheck="false" maxlength="1500"></textarea><div id="chatBtns"><button id="chatMic" title="Speak your question">🎤</button><button id="chatGo">Ask</button></div></div>';
     A.box = box; document.body.appendChild(box);
     const inp = document.getElementById('chatIn'), go = document.getElementById('chatGo'), mic = document.getElementById('chatMic');
     const grow = () => { inp.style.height = 'auto'; inp.style.height = Math.max(Math.min(inp.scrollHeight + 2, 176), 54) + 'px'; act(); };
@@ -94,7 +94,8 @@
     A.grow = grow; A.act = act;
     inp.addEventListener('input', grow); inp.addEventListener('focus', act); inp.addEventListener('blur', act);
     inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } e.stopPropagation(); });
-    go.onclick = send; document.getElementById('logx').onclick = () => { document.getElementById('log').classList.remove('on'); A.hist = []; document.getElementById('logb').innerHTML = ''; act(); };
+    go.onclick = send; document.getElementById('logx').onclick = () => { document.getElementById('log').classList.remove('on'); act(); };
+    document.getElementById('logdel').onclick = () => { if (A.busy) return; document.getElementById('log').classList.remove('on'); A.hist = []; document.getElementById('logb').innerHTML = ''; act(); };
     /* voice input: the browser's speech recognition (Chrome / Edge / Safari). Firefox has none - the button then says so. */
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) mic.title = 'Voice input is not available in this browser (Chrome or Edge have it)';

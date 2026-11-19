@@ -76,6 +76,27 @@ def owner_line() -> str:
     return "Owner: " + ", ".join(parts) + "."
 
 
+def typed_lines(a: dict[str, Any]) -> list[str]:
+    """v1.22: what the user typed in under Setup (house, loans, funds, other investments, balances), one plain line each, with the gain already
+    worked out - so the model reads it here instead of guessing it from unrelated tables (the database has no rows about these)."""
+    out: list[str] = []
+    for p in a.get("property") or []:
+        value, price = float(p.get("value") or 0), float(p.get("purchase_price") or 0)
+        basis = {"your estimate": "the owner's own estimate", "estimate": "estimate from the national house price index"}.get(str(p.get("basis")), "no estimate available, shown at the purchase price")
+        out.append(f"House/apartment \"{p.get('name')}\" ({p.get('country')}): value today {_eur(value)} ({basis}), bought {p.get('purchase_date')} for {_eur(price)}, "
+                   f"gain in value since purchase {_eur(value - price)}. No rental income is recorded for it.")
+    for lo in a.get("loans") or []:
+        out.append(f"Loan \"{lo.get('name')}\": balance {_eur(lo.get('balance'))} of {_eur(lo.get('amount'))} at {lo.get('rate_pct')} % a year, {_eur(lo.get('monthly'))}/month, paid off {lo.get('payoff')}.")
+    for f in a.get("funds") or []:
+        gain = f.get("gain")
+        out.append(f"Fund \"{f.get('name')}\" (typed in): value {_eur(f.get('value'))}, paid in {_eur(f.get('invested'))}" + (f", gain {_eur(gain)}." if gain is not None else ", shown at cost (no current value given)."))
+    for o in a.get("other") or []:
+        out.append(f"Other investment \"{o.get('name')}\": value {_eur(o.get('value'))} (typed in).")
+    for b in a.get("balances") or []:
+        out.append(f"Account \"{b.get('name')}\": balance {_eur(b.get('balance'))} typed in on {b.get('date')}.")
+    return out
+
+
 def portfolio_summary(d: dict[str, Any]) -> str:
     """Plain-text overview of data.json for the model: totals, allocation, positions, crypto, Example Fund, apartment, loan, tax."""
     if not d:
@@ -92,11 +113,12 @@ def portfolio_summary(d: dict[str, Any]) -> str:
         L.append("Securities (top): " + "; ".join(f"{p.get('name')} {_eur(p.get('value'))} gain {_eur(p.get('gain'))}" for p in pos))
     cb = d.get("crypto") or {}
     if cb:
-        L.append(f"Crypto total {_eur(cb.get('total_eur'))}: " + ", ".join(f"{c.get('currency')} {_eur(c.get('eur'))}" for c in (cb.get("coins") or [])[:8]))
+        L.append(f"Crypto total {_eur(cb.get('total_eur'))}: " + ", ".join(f"{c.get('currency')} {_eur(c.get('eur'))}" for c in (cb.get("holdings") or cb.get("coins") or [])[:8]))
     wf = d.get("examplefund") or {}
     if wf.get("personal"):
         p = wf["personal"]
         L.append(f"Example Fund (private equity): NAV {_eur(p.get('nav'))}, paid in {_eur(p.get('paid_in'))}.")
+    L += typed_lines(d.get("assets") or {})
     ap = d.get("apartment") or {}
     if ap:
         L.append(f"Apartment {ap.get('address', '')}: value {_eur(ap.get('value_used'))}, bought {ap.get('purchase_date')} for {_eur(ap.get('purchase_price'))}, {ap.get('sqm')} sqm.")

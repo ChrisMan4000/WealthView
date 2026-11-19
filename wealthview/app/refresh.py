@@ -24,13 +24,13 @@ from ..data.finance import assets as typed_assets, gls_block
 from ..data.finance.bookings import balance_history, build_flow_model, spending_rows
 from ..data.finance.models import apartment_model, loan_model, nw_series
 from ..data.finance.positions import enrich_crypto, enrich_crypto_cost, income_estimate
-from ..data.ingest import db_queries, db_schema, loaders
+from ..data.ingest import db_queries, db_schema, exchanges, loaders
 from ..data.ingest import sources as reminder_sources
 from ..data.ingest.logo_fetch import fetch_logos
 from ..data.ingest.paypal import load_paypal_preferring_db, paypal_best_from_db
 from ..data.ingest.quotes import live_prices
 from ..analysis import insights, quick, unusual
-from . import refresh_stages
+from . import fund_tools, refresh_stages
 from .refresh_stages import DB_ERRORS
 from ..analysis.alerts import dedupe_alerts, raise_alerts
 from ..analysis.analytics_run import compute_analytics
@@ -98,7 +98,7 @@ class Run:
     (reading it earlier raises AttributeError, so a wrong stage order cannot go unnoticed)."""
     ctx: RunContext
     profile: Profile
-    conn: sqlite3.Connection | None
+    conn: sqlite3.Connection | None = None
     sync_rep: SyncReport | None
     rows: list[BookingRow]
     gls: GlsBlock | None
@@ -156,7 +156,7 @@ def stage_gls_and_flows(r: Run) -> None:
 
 
 def stage_depot(r: Run) -> None:
-    r.depot = refresh_stages.load_depot_with_trades(r.ctx, r.rows)
+    r.depot = refresh_stages.load_depot_with_trades(r.ctx, r.rows, r.conn)
 
 
 def stage_save_trades(r: Run) -> None:
@@ -164,7 +164,20 @@ def stage_save_trades(r: Run) -> None:
 
 
 def stage_crypto(r: Run) -> None:
-    r.crypto = run_stage(r.ctx, "refresh.stage_crypto", lambda: loaders.load_coinbase(r.ctx), None, status="coinbase", msg="Coinbase could not be read: ")
+    conn = r.conn
+    keys = run_stage(r.ctx, "refresh.stage_crypto_keys", lambda: exchanges.coinbase_keys(conn), None)      # typed in under Setup (v1.21); None = environment variables
+    r.crypto = run_stage(r.ctx, "refresh.stage_crypto", lambda: loaders.load_coinbase(r.ctx, keys), None, status="coinbase", msg="Coinbase could not be read: ")
+    if not r.crypto and conn:       # no Coinbase API / cache: use the buys and sells the automatic reader stored
+        r.crypto = run_stage(r.ctx, "refresh.stage_crypto_db", lambda: loaders.load_crypto_db(r.ctx, conn), None, status="coinbase", msg="crypto from the database could not be read: ")
+    if conn:                        # v1.21: other exchanges connected through their API (Binance, Kraken) are added to the same box
+        extra = run_stage(r.ctx, "refresh.stage_crypto_api", lambda: exchanges.load_blocks(r.ctx, conn, loaders.spot_eur), [])
+        for block in extra:
+            had = bool(r.crypto)
+            r.crypto = exchanges.merge(r.crypto, block)
+            if r.crypto and had:
+                r.crypto["mixed"] = True
+        if extra and r.ctx.snapshot().get("coinbase", {}).get("state") != "ok":
+            r.ctx.set_status("coinbase", "ok", f"{len((r.crypto or {}).get('holdings', []))} assets, live")
     if r.crypto:
         enrich_crypto(r.crypto)
         enrich_crypto_cost(r.crypto)
@@ -193,7 +206,7 @@ def stage_models(r: Run) -> None:
 def stage_assets(r: Run) -> None:
     """The house, loans, funds and other investments typed in (v1.20) plus typed bank balances; None when there are none."""
     conn = r.conn
-    r.assets = run_stage(r.ctx, "refresh.stage_assets", lambda: typed_assets.build_assets_block(conn, today()) if conn else None, None,
+    r.assets = run_stage(r.ctx, "refresh.stage_assets", lambda: typed_assets.build_assets_block(conn, today(), fund_reader=fund_tools.make_fund_reader(), isin_price=fund_tools.isin_price) if conn else None, None,
                          status="database", msg="your typed assets could not be read: ", errors=DB_ERRORS)
 
 
@@ -282,9 +295,9 @@ STAGES: list[Stage] = [
     Stage("open the database and import new files", stage_open_db, (), ("conn", "sync_rep")),
     Stage("read the GLS bookings", stage_bookings, ("conn",), ("rows",)),
     Stage("GLS block, flow model, balance history", stage_gls_and_flows, ("rows",), ("gls", "flows", "balances")),
-    Stage("depot with live quotes and trades", stage_depot, ("rows",), ("depot",)),
+    Stage("depot with live quotes and trades", stage_depot, ("rows", "conn"), ("depot",)),
     Stage("save the trades", stage_save_trades, ("conn", "rows"), ("trades_saved",)),
-    Stage("Coinbase", stage_crypto, (), ("crypto",)),
+    Stage("Coinbase", stage_crypto, ("conn",), ("crypto",)),
     Stage("Example Fund", stage_examplefund, (), ("examplefund",)),
     Stage("PayPal", stage_paypal, ("conn",), ("paypal",)),
     Stage("apartment and loan models", stage_models, (), ("apartment", "loan")),
@@ -330,7 +343,14 @@ def quick_main() -> None:
     """Light refresh (every 5 min): Coinbase balances + live prices -> patches data.json in place."""
     ctx = RunContext()
     data: DataJson = json.loads((data_path("data.json")).read_text("utf-8"))
-    quick.quick_crypto(ctx, data)
+
+    def coinbase_keys() -> dict[str, str] | None:      # v1.21: keys typed in under Setup (None = environment variables, as before)
+        kconn = db_schema.connect(data_path(db_schema.DB_NAME))
+        try:
+            return exchanges.coinbase_keys(kconn)
+        finally:
+            kconn.close()
+    quick.quick_crypto(ctx, data, run_stage(ctx, "quick.coinbase_keys", coinbase_keys, None))
     quick.quick_depot(data, live_prices(data, crypto=False))
     compute_totals(data)
     quick.quick_nwx(data)

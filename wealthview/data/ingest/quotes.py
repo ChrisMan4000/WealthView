@@ -120,6 +120,23 @@ def try_symbol(sym: str, snap: float | None, tolerance: float) -> dict[str, Any]
     return dict(sym=sym, cur=cur, price_eur=eur, t=meta.get("regularMarketTime"))
 
 
+def price_by_isin(isin: str) -> dict[str, Any] | None:
+    """{sym, price_eur, cur, date} for a fund or share found by its ISIN on Yahoo (the ISIN is the only thing sent), or None when it is not found."""
+    for sym in search_syms(isin)[:3]:
+        try:
+            meta, _, _ = ychart(sym)
+            p = meta.get("regularMarketPrice")
+            if p is None:
+                continue
+            cur = meta.get("currency") or "EUR"
+            t = meta.get("regularMarketTime")
+            day = dt.datetime.fromtimestamp(t, dt.timezone.utc).date().isoformat() if t else dt.date.today().isoformat()
+            return dict(sym=sym, cur=cur, price_eur=to_eur(float(p), cur), date=day)
+        except MARKET_ERRORS as exc:
+            safenet.swallowed("quotes.price_by_isin", exc)
+    return None
+
+
 def ydiv(sym: str) -> tuple[float, str]:
     u = YAHOO_CHART.format(sym=urllib.parse.quote(sym)) + "?range=1y&interval=1d&events=div"
     res = safenet.fetch_json(u)["chart"]["result"][0]

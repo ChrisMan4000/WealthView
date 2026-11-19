@@ -134,10 +134,12 @@ def load_rows(ctx: RunContext, conn: sqlite3.Connection | None) -> list[BookingR
     return rows
 
 
-def load_depot_with_trades(ctx: RunContext, rows: list[BookingRow]) -> Depot | None:
+def load_depot_with_trades(ctx: RunContext, rows: list[BookingRow], conn: sqlite3.Connection | None = None) -> Depot | None:
     """Depot with live quotes, plus the purchases read from the bank bookings (a failure only warns). Reads only - the
     caller saves the trades (see save_trades)."""
     depot = loaders.load_depot(ctx)
+    if depot is None and conn is not None:       # no depot file of the old setup: use what the automatic reader stored
+        depot = run_stage(ctx, "refresh_stages.load_depot_db", lambda: loaders.load_depot_db(ctx, conn), None, status="depot", msg="depot from the database could not be read: ")
     if depot:
         enrich_depot(ctx, depot)
 

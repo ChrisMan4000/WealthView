@@ -25,7 +25,7 @@ from ...common.timeutil import month_key, mrange
 MERCHANTS = [
     (r"amazon|amzn", "Amazon", "amazon.de"), (r"\brewe\b", "REWE", "rewe.de"),
     (r"\bedeka\b", "EDEKA", "edeka.de"), (r"\blidl\b", "Lidl", "lidl.de"), (r"\baldi\b", "ALDI", "aldi.de"),
-    (r"\bnetto\b", "Netto", "netto-online.de"), (r"\bpenny\b", "Penny", "penny.de"), (r"rossmann", "Rossmann", "rossmann.de"),
+    (r"\bnetto\b", "Netto", "netto-online.de"), (r"\bpenny\b", "Penny", "penny.de"), (r"knuspr", "Knuspr", "knuspr.de"), (r"rossmann", "Rossmann", "rossmann.de"),
     (r"dm[- ]drog", "dm", "dm.de"), (r"budni", "Budni", "budni.de"), (r"alnatura", "Alnatura", "alnatura.de"),
     (r"kaufland", "Kaufland", "kaufland.de"), (r"wolt", "Wolt", "wolt.com"), (r"lieferando", "Lieferando", "lieferando.de"),
     (r"db vertrieb|deutsche bahn", "Deutsche Bahn", "bahn.de"), (r"enterprise rent", "Enterprise", "enterprise.de"),

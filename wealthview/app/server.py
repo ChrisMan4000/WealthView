@@ -21,7 +21,7 @@ from ..common import audit, config, folderbrowse, netlog, paths, safenet
 from ..common.bootstrap import bootstrap
 from ..common.profile import load_profile
 from ..data.finance import catrules
-from ..data.ingest import company_info, db_queries, db_rules, db_schema, db_setup, logo_fetch, logos_online, quotes
+from ..data.ingest import company_info, db_queries, db_rules, db_schema, db_setup, exchanges, logo_fetch, logos_online, quotes
 from . import auth, jobs, lifetime
 
 LIVE_TTL_S = 20            # live quotes are re-fetched at most this often
@@ -360,7 +360,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == "/api/cat/delete":
             return self._send(200, self._api_cat_delete(body))
         setup = {"/api/setup/source": self._api_setup_source, "/api/setup/asset": self._api_setup_asset, "/api/setup/balance": self._api_setup_balance,
-                 "/api/setup/answer": self._api_setup_answer}
+                 "/api/setup/answer": self._api_setup_answer, "/api/setup/test": self._api_setup_test}
         if path in setup:
             return self._send(200, setup[path](body))
         self._send(404, {"error": "not found"})
@@ -382,6 +382,14 @@ class RequestHandler(BaseHTTPRequestHandler):
         audit.record("setup_source", str(body.get("action")))
         with open_data_db() as conn:
             return db_setup.source_action(conn, body)
+
+    @api_boundary()
+    def _api_setup_test(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Setup (v1.22): try one API connection now and say what came back ({ok: True, works, text}); nothing is stored."""
+        audit.record("setup_test")
+        with open_data_db() as conn:
+            got = exchanges.test_source(conn, body.get("id"))
+        return {"ok": True, "works": bool(got["ok"]), "text": got["text"]}
 
     @api_boundary()
     def _api_setup_asset(self, body: dict[str, Any]) -> dict[str, Any]:

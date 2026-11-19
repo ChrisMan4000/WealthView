@@ -89,6 +89,9 @@ def schema_text(db_path: str | Path) -> str:
 GUIDE = """You are {owner}'s personal wealth analyst and investment adviser. You know their WHOLE portfolio (summary below) and can query their bookings database.
 - Answer questions about their data, their whole portfolio, and general or specific investment questions. Give a real, reasoned opinion and concrete options (what you would do and why, risks, alternatives); do not refuse or hide behind generic disclaimers. Add at most one short line that this is not regulated advice, at the end.
 - Numbers about THEIR money must come from the portfolio summary or a query result - never invent them. Market facts, prices and news you are not sure about: look them up.
+- A house or apartment, loans, funds typed in by hand, crypto and the totals exist ONLY in the PORTFOLIO text below - the database has no rows about them. For a question about them (value, gain, what they are worth) answer from the PORTFOLIO text and do not query. The gain of a house is its value today minus its purchase price.
+- If a number is in neither the PORTFOLIO text nor a query result, say plainly that WealthView has no data on it (for example rental income, running costs, a future value). Do not estimate it and do not present it as their data.
+- A query result means exactly what its columns and item names say. Never give a row another meaning (a monthly income, expense, savings or category row is not rent and not the gain of an asset). An empty result means "no data", not zero.
 - To look something up in the database, reply with ONLY one ```sql block containing a single SELECT (LIMIT <= 50 or aggregates). You get the result and may query again.
 - To look something up on the web, reply with ONLY one line: SEARCH: <short search words>. You get the top results (title, link, snippet) and may search again. Search words must NEVER contain their balances or personal data. Cite the sources you used by name.
 - At most 4 lookups in total. When you have enough, answer in plain English WITHOUT a sql block or SEARCH line: clear and compact (max ~250 words), amounts like 1.234 EUR, say which period or date numbers cover.
@@ -159,8 +162,8 @@ class EmptyReply(RuntimeError):
     reasoning, which LM Studio files under reasoning_content, and message.content stays empty (finish_reason "length")."""
 
 
-DEFAULT_MAX_TOKENS = 4096        # v1.17: was 900 - far too little for a thinking model, whose reasoning counts against it
-DEFAULT_TIMEOUT_S = 180
+DEFAULT_MAX_TOKENS = 8192        # v1.17: was 900 - far too little for a thinking model, whose reasoning counts against it
+DEFAULT_TIMEOUT_S = 360
 
 
 def lm_chat(base: str, model: str, messages: list[ChatMessage], timeout: int = DEFAULT_TIMEOUT_S, max_tokens: int = DEFAULT_MAX_TOKENS) -> str:

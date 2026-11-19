@@ -16,13 +16,14 @@ from ...common.fileio import write_atomic
 from ...common.timeutil import axis
 from ...common.types.datajson import IncomeEstimate, IncomeItem
 from ...common.types.depot import CryptoBlock, Depot, DepotPosition, Holding, UnknownLot
+from ..ingest.figi import lookup as figi_lookup
 from ..ingest.quotes import MARKET_ERRORS, search_syms, try_symbol, ydiv, to_eur, monthly_closes, align
 
 # ------------------------------------------------------ live quotes (stocks)
 NAME_STRIP = re.compile(r"\(.*?\)|adr|etf|ucits|\bag\b", re.I)
 
 
-def _symbol_candidates(p: DepotPosition, entry: dict[str, Any], cands: dict[str, Any]) -> tuple[list[str], bool]:
+def _symbol_candidates(p: DepotPosition, entry: dict[str, Any], cands: dict[str, Any], figi: dict[str, dict[str, Any]] | None = None) -> tuple[list[str], bool]:
     """symbols to try for one position: the cached one, the configured ones, else a Yahoo name search (unless it failed within a week).
     Returns (symbols, searched); searched is True only when a real name search was made."""
     order = []
@@ -31,16 +32,26 @@ def _symbol_candidates(p: DepotPosition, entry: dict[str, Any], cands: dict[str,
     order += cands.get(p["wkn"], [])
     retry_ok = True
     if entry.get("fail") and not order:
-        try:
-            retry_ok = (today() - dt.date.fromisoformat(entry["fail"])).days >= 7
+        try:      # a failed search waits a week - but a failure from before v1.22 (no "how") is tried again at once: there is a better search now
+            retry_ok = entry.get("how") != "wkn" or (today() - dt.date.fromisoformat(entry["fail"])).days >= 7
         except (ValueError, TypeError) as exc:
             safenet.swallowed("positions.resolve_positions", exc)
     searched = False
     if retry_ok and not order:
-        q = NAME_STRIP.sub("", p["name"]).strip()
-        order += search_syms(q)[:3]
+        found = (figi or {}).get(p["wkn"]) or {}      # v1.22: the WKN looked up at OpenFIGI: real name + tickers per exchange
+        order += found.get("symbols", [])
+        for q in dict.fromkeys(x for x in (found.get("name"), NAME_STRIP.sub("", p["name"]).strip()) if x):
+            order += search_syms(q)[:3]
         searched = True
     return order, searched
+
+
+def _recent(day: Any) -> bool:
+    """True when `day` (ISO date) is less than a week ago"""
+    try:
+        return (today() - dt.date.fromisoformat(str(day))).days < 7
+    except (ValueError, TypeError):
+        return False
 
 
 def _first_valid_symbol(order: list[str], snap: float | None, tolerance: float) -> dict[str, Any] | None:
@@ -63,16 +74,21 @@ def resolve_positions(positions: list[DepotPosition], depot_age: int = 0) -> tup
     cands = config.setting("symbol_candidates", {})
     live = {}
     tolerance = min(0.35, 0.07 + 0.012 * max(0, depot_age))      # the older the export, the further live prices may have moved
+    # v1.22: positions without a known or configured symbol (and not searched in vain this week) are looked up by WKN in one go
+    need = [p["wkn"] for p in positions if not cache.get(p["wkn"], {}).get("sym") and not cands.get(p["wkn"])
+            and not (cache.get(p["wkn"], {}).get("how") == "wkn" and _recent(cache[p["wkn"]].get("fail")))]
+    found = figi_lookup(need) if need else {}
     for p in positions:
         w = p["wkn"]
         entry = cache.get(w, {})
-        order, searched = _symbol_candidates(p, entry, cands)
+        order, searched = _symbol_candidates(p, entry, cands, found)
         got = _first_valid_symbol(order, p["price"], tolerance)
+        label = (found.get(w) or {}).get("name") or entry.get("name")      # the security's real name, kept for the display
         if got:
-            cache[w] = dict(sym=got["sym"], cur=got["cur"])
+            cache[w] = dict(sym=got["sym"], cur=got["cur"], **({"name": label} if label else {}))
             live[w] = got
         elif searched:
-            cache[w] = dict(fail=today().isoformat())      # a name search found nothing: wait a week before searching again
+            cache[w] = dict(fail=today().isoformat(), how="wkn", **({"name": label} if label else {}))      # nothing found: wait a week before searching again
         # otherwise keep the old entry: a cached symbol survives a failed lookup, and a skipped search keeps its old 'fail' date
     try:
         write_atomic(sym_file, json.dumps(cache, indent=1))
@@ -131,6 +147,9 @@ def enrich_depot(ctx: RunContext, depot: Depot) -> None:
     for p in depot["positions"]:
         g = live.get(p["wkn"])
         p["sym"] = cache.get(p["wkn"], {}).get("sym")
+        real = cache.get(p["wkn"], {}).get("name")
+        if real and p.get("name") == str(p.get("raw") or "").title():      # v1.22: no short name configured - show the security's real name, not the bank's abbreviation
+            p["name"] = real
         p["live"] = bool(g)
         if g:
             n_live += 1

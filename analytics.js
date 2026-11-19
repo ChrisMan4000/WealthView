@@ -32,7 +32,7 @@
   function heatTable(m) {   // correlation matrix {a:{b:r}}
     const ks = Object.keys(m); if (!ks.length) return '<div class="dim sm">Not enough overlapping history (needs 12 months).</div>';
     const cell = r => { if (r == null) return `<td title="Fewer than 12 months of overlapping history" style="text-align:center" class="dim">n/a</td>`; const a = Math.min(1, Math.abs(r)), c = r >= 0 ? '255,154,61' : '60,190,235'; return `<td title="Correlation ${N2(r)}" style="text-align:center;background:rgba(${c},${(a * .6).toFixed(2)})">${N2(r)}</td>`; };
-    return `<table style="border-collapse:collapse;font-size:.74rem;width:100%"><tr><td></td>${ks.map(k => `<td class="xs dim" style="text-align:center;padding:.15rem .3rem">${W().esc(k.slice(0, 14))}</td>`).join('')}</tr>${ks.map(a => `<tr><td class="xs dim" style="padding:.15rem .3rem">${W().esc(a.slice(0, 16))}</td>${ks.map(b => cell(m[a][b])).join('')}</tr>`).join('')}</table>`;
+    return `<table style="border-collapse:collapse;font-size:max(var(--minfs,0px),.74rem);width:100%"><tr><td></td>${ks.map(k => `<td class="xs dim" style="text-align:center;padding:.15rem .3rem">${W().esc(k.slice(0, 14))}</td>`).join('')}</tr>${ks.map(a => `<tr><td class="xs dim" style="padding:.15rem .3rem">${W().esc(a.slice(0, 16))}</td>${ks.map(b => cell(m[a][b])).join('')}</tr>`).join('')}</table>`;
   }
   const stat = (l, v, t) => `<div title="${W().esc(t || '')}">${l}<b>${v}</b></div>`;
   const kv = (l, v) => `<div class="tr" style="grid-template-columns:1fr auto;cursor:default"><span class="dim">${l}</span><span class="wh">${v}</span></div>`;

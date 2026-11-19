@@ -10,9 +10,11 @@ from ..data.ingest import loaders
 from .totals import gross_and_net
 
 
-def quick_crypto(ctx: RunContext, data: DataJson) -> None:
+def quick_crypto(ctx: RunContext, data: DataJson, keys: dict[str, str] | None = None) -> None:
     """Fresh Coinbase balances (keeping the stored price history) replace data["crypto"]."""
-    cb = run_stage(ctx, "quick.quick_crypto", lambda: loaders.load_coinbase(ctx), None)       # Coinbase is optional: the quick refresh keeps the stored balances
+    if (data.get("crypto") or {}).get("mixed") or (data.get("crypto") or {}).get("source") == "api":
+        return      # v1.21: balances of several exchanges (or of one read through its API under Setup) - only the full refresh knows all of them
+    cb = run_stage(ctx, "quick.quick_crypto", lambda: loaders.load_coinbase(ctx, keys), None)       # Coinbase is optional: the quick refresh keeps the stored balances
     if cb and cb.get("holdings"):
         old = {h["currency"]: h for h in (data.get("crypto") or {}).get("holdings", [])}
         for h in cb["holdings"]:

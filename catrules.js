@@ -104,15 +104,15 @@
     if (cssDone) return; cssDone = true; const s = document.createElement('style');
     s.textContent = `.cp{display:flex;gap:1rem;width:min(92vw,98rem);height:min(76vh,50rem);min-height:24rem}.cpl{width:27rem;flex:none;overflow:auto;border-right:1px solid rgba(60,190,235,.25);padding-right:.6rem}
 .cps{flex:1;min-width:0;overflow:auto;padding:.1rem .4rem .5rem .2rem}.cpr{flex:1;overflow:auto}.cps h4{margin:0 0 .2rem;font-weight:400;font-size:1.15rem;color:#fff;letter-spacing:.06em}
-.cph{font-size:.62rem;letter-spacing:.16em;color:var(--dim);margin:.2rem 0 .4rem}.cpm{padding:.45rem .5rem;border:1px solid transparent;border-bottom-color:rgba(60,190,235,.1);cursor:pointer}.cpm:hover{background:rgba(60,190,235,.06)}
+.cph{font-size:max(var(--minfs,0px),.62rem);letter-spacing:.16em;color:var(--dim);margin:.2rem 0 .4rem}.cpm{padding:.45rem .5rem;border:1px solid transparent;border-bottom-color:rgba(60,190,235,.1);cursor:pointer}.cpm:hover{background:rgba(60,190,235,.06)}
 .cpm.on{border-color:var(--or);background:rgba(255,154,61,.07)}.cpt{display:flex;justify-content:space-between;gap:.6rem}.cpn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff}
-.cpb{height:.22rem;background:rgba(60,190,235,.1);margin:.3rem 0}.cpb i{display:block;height:100%}.cpd{display:flex;justify-content:space-between;gap:.6rem;font-size:.68rem;color:var(--dim);align-items:center}
-.chip{display:inline-block;border:1px solid;padding:0 .45rem;font-size:.66rem;letter-spacing:.06em;color:#dff3fa}.ccs{display:flex;flex-wrap:wrap;gap:.4rem}
-.cc{border-left:.3rem solid var(--cc);padding:.35rem .7rem;font-size:.78rem;text-transform:none;letter-spacing:.02em}.cc.on{background:rgba(255,154,61,.12);border-color:var(--or);border-left-color:var(--cc);color:var(--or)}
-.cnew{display:flex;gap:.4rem;margin-top:.7rem}.cnew input{flex:1;min-width:0}.cpbk{font-size:.74rem}.bk{display:grid;grid-template-columns:5.5rem minmax(0,1fr) 5rem 11rem 1.2rem;gap:.5rem;align-items:center;padding:.25rem 0;border-bottom:1px solid rgba(60,190,235,.08)}
-.bkp{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bk select{background:rgba(0,16,26,.85);color:#fff;border:1px solid rgba(60,190,235,.35);padding:.15rem .3rem;font:inherit;font-size:.72rem}.bkx{color:var(--or);text-decoration:none}
+.cpb{height:.22rem;background:rgba(60,190,235,.1);margin:.3rem 0}.cpb i{display:block;height:100%}.cpd{display:flex;justify-content:space-between;gap:.6rem;font-size:max(var(--minfs,0px),.68rem);color:var(--dim);align-items:center}
+.chip{display:inline-block;border:1px solid;padding:0 .45rem;font-size:max(var(--minfs,0px),.66rem);letter-spacing:.06em;color:#dff3fa}.ccs{display:flex;flex-wrap:wrap;gap:.4rem}
+.cc{border-left:.3rem solid var(--cc);padding:.35rem .7rem;font-size:max(var(--minfs,0px),.78rem);text-transform:none;letter-spacing:.02em}.cc.on{background:rgba(255,154,61,.12);border-color:var(--or);border-left-color:var(--cc);color:var(--or)}
+.cnew{display:flex;gap:.4rem;margin-top:.7rem}.cnew input{flex:1;min-width:0}.cpbk{font-size:max(var(--minfs,0px),.74rem)}.bk{display:grid;grid-template-columns:5.5rem minmax(0,1fr) 5rem 11rem 1.2rem;gap:.5rem;align-items:center;padding:.25rem 0;border-bottom:1px solid rgba(60,190,235,.08)}
+.bkp{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bk select{background:rgba(0,16,26,.85);color:#fff;border:1px solid rgba(60,190,235,.35);padding:.15rem .3rem;font:inherit;font-size:max(var(--minfs,0px),.72rem)}.bkx{color:var(--or);text-decoration:none}
 .cpg{display:flex;flex-wrap:wrap;gap:.4rem .6rem;align-items:center;margin:.5rem 0;padding-bottom:.5rem;border-bottom:1px solid rgba(60,190,235,.1)}.cpg .chip{min-width:9rem}
-.rl{border:1px solid rgba(60,190,235,.3);padding:.1rem .5rem;font-size:.76rem}.rl a{margin-left:.5rem;color:var(--rd);text-decoration:none}#catPop a{color:var(--c2)}
+.rl{border:1px solid rgba(60,190,235,.3);padding:.1rem .5rem;font-size:max(var(--minfs,0px),.76rem)}.rl a{margin-left:.5rem;color:var(--rd);text-decoration:none}#catPop a{color:var(--c2)}
 @media (max-width:1100px){.cp{flex-direction:column;height:auto}.cpl{width:auto;max-height:18rem;border-right:0}}`;
     document.head.appendChild(s);
   }

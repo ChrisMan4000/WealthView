@@ -56,11 +56,11 @@ _KEEP_LINES = 1500            # log lines kept when the file is trimmed (and rea
 _GEO_TTL = 30 * DAY_S         # seconds a located host stays cached
 
 LABELS = (("yahoo.com", "Yahoo Finance"), ("news.google.com", "Google News"), ("google.com", "Google"), ("wikidata.org", "Wikidata"),
-          ("coinbase.com", "Coinbase"), ("anthropic.com", "Claude API"), ("duckduckgo.com", "Icon service"), ("ip-api.com", "Geo lookup"),
+          ("coinbase.com", "Coinbase"), ("binance.com", "Binance"), ("openfigi.com", "OpenFIGI"), ("kraken.com", "Kraken"), ("bundesbank.de", "Bundesbank"), ("anthropic.com", "Claude API"), ("duckduckgo.com", "Icon service"), ("ip-api.com", "Geo lookup"),
           ("open-meteo.com", "Weather"))
 # last-resort positions of the usual services (city of the provider's main data centre) when no lookup is possible
 FALLBACK = {"yahoo.com": ("Sunnyvale", "United States", 37.37, -122.04), "google.com": ("Mountain View", "United States", 37.42, -122.08),
-            "wikidata.org": ("Ashburn", "United States", 39.04, -77.49), "coinbase.com": ("San Francisco", "United States", 37.77, -122.42),
+            "wikidata.org": ("Ashburn", "United States", 39.04, -77.49), "coinbase.com": ("San Francisco", "United States", 37.77, -122.42), "binance.com": ("Tokyo", "Japan", 35.68, 139.69), "kraken.com": ("San Francisco", "United States", 37.77, -122.42),
             "anthropic.com": ("San Francisco", "United States", 37.77, -122.42), "duckduckgo.com": ("Paris", "France", 48.86, 2.35)}
 
 

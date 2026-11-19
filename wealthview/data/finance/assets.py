@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 from ...common import safenet
 from ..ingest import db_accounts, db_assets
+from . import houseindex
 
 HPI_URL = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/prc_hpi_q?format=JSON&lang=EN&purchase=TOTAL&unit=I15_Q&geo={geo}"
 # the countries prc_hpi_q covers, as ISO code -> Eurostat code (Greece is EL there)
@@ -173,6 +174,20 @@ def fund_series(payments: list[dict[str, Any]], value: float, today: dt.date) ->
     return out
 
 
+def fund_series_points(payments: list[dict[str, Any]], points: list[tuple[str, float]], value: float, today: dt.date) -> list[tuple[str, float]]:
+    """Like fund_series, but a value found in a report (or a price) replaces 'what was paid in' from its month on; the last month is the current value."""
+    base = fund_series(payments, value, today)
+    if not base or not points:
+        return base
+    pts = sorted((d[:7], float(v)) for d, v in points if d[:7] <= _month(today))
+    out = []
+    for m, v in base:
+        known = [pv for pm, pv in pts if pm <= m]
+        out.append((m, known[-1] if known else v))
+    out[-1] = (out[-1][0], round(float(value), 2))
+    return out
+
+
 def to_axis(series: list[tuple[str, float]], axis: list[str]) -> list[float | None]:
     """The value for each month of the shared axis: None before the first point, the last known value carried on after the last."""
     by = dict(series)
@@ -212,14 +227,20 @@ def add_to_nw(nw: dict[str, list[Any]], loan_series: list[float], block: dict[st
     return loans
 
 
-def build_assets_block(conn: sqlite3.Connection, today: dt.date, fetch: Callable[[str], dict[str, float] | None] | None = None) -> dict[str, Any] | None:
+def build_assets_block(conn: sqlite3.Connection, today: dt.date, fetch: Callable[[str], dict[str, float] | None] | None = None,
+                       fund_reader: Callable[[str, float | None], dict[str, Any]] | None = None,
+                       isin_price: Callable[[str], dict[str, Any] | None] | None = None,
+                       de_index: Callable[[str], dict[str, float] | None] | None = None) -> dict[str, Any] | None:
     """The numbers for the typed assets: {property, loans, funds, other, totals}, or None when nothing was typed in.
-    fetch(country) gives the house price index of a country (default: Eurostat); it is asked once per country."""
+    fetch(country) gives the house price index of a country (default: Eurostat); it is asked once per country.
+    de_index(area) gives the Bundesbank index for a German property (default: houseindex.fetch), fund_reader(folder, invested) reads a report folder,
+    isin_price(isin) gives the price of a fund by its ISIN (both optional: without them funds stay at what was typed or paid in)."""
     items = db_assets.list_assets(conn)
     balances = account_balances(conn)
     if not items and not balances:
         return None
     get = fetch or fetch_hpi
+    get_de = de_index or houseindex.fetch
     cache: dict[str, dict[str, float] | None] = {}
     props: list[dict[str, Any]] = []
     loans: list[dict[str, Any]] = []
@@ -229,21 +250,44 @@ def build_assets_block(conn: sqlite3.Connection, today: dt.date, fetch: Callable
         f, aid, name = it["fields"], it["account_id"], it["name"]
         if it["kind"] == "property":
             c = f["country"]
-            if c not in cache:
-                cache[c] = get(c)
-            idx = cache[c] or {}
-            est = f.get("current_estimate")
-            series = property_series(f["purchase_price"], f["purchase_date"], idx, today, est)
-            basis = "your estimate" if est is not None else "estimate" if idx else "purchase price"
+            area = houseindex.area_or_default(f.get("area"))
+            key = f"{c}/{area}" if c == "DE" else c
+            if key not in cache:
+                de = (get_de(area) or get(c)) if c == "DE" and fetch is None else get(c)
+                cache[key] = de
+            idx = cache[key] or {}
+            est, size, ppm = f.get("current_estimate"), f.get("size_m2"), f.get("price_per_m2")
+            own = float(est) if est is not None else round(float(ppm) * float(size), 2) if ppm and size else None
+            series = property_series(f["purchase_price"], f["purchase_date"], idx, today, own)
+            via = f"{houseindex.label(area)}, Bundesbank" if c == "DE" and idx and fetch is None else "house price index"
+            basis = "your estimate" if est is not None else "your price per m²" if own is not None else f"estimate ({via})" if idx else "purchase price"
             props.append({"account_id": aid, "name": name, "country": c, "purchase_price": f["purchase_price"], "purchase_date": f["purchase_date"],
-                          "value": float(est) if est is not None else series[-1][1], "basis": basis, "series": series})
+                          "value": own if own is not None else series[-1][1], "basis": basis, "area": area if c == "DE" else None,
+                          "size_m2": size, "price_per_m2": ppm, "series": series})
         elif it["kind"] == "loan":
             m = loan_model(f["amount"], f["start_date"], f["rate_pct"], f.get("monthly"), f.get("end_date"), today)
             loans.append({"account_id": aid, "name": name, "amount": f["amount"], "rate_pct": f["rate_pct"], "property": f.get("property"),
                           "balance": m["balance"], "monthly": m["monthly"], "payoff": m["payoff"], "series": m["series"]})
         elif it["kind"] == "fund":
-            m = fund_model(f["payments"], f.get("current_value"), today)
-            funds.append({"account_id": aid, "name": name, "isin": f.get("isin"), **m, "series": fund_series(f["payments"], m["value"], today)})
+            invested = fund_model(f["payments"], None, today)["invested"]
+            cv, basis, points, note, asof = f.get("current_value"), None, [], None, None
+            if cv is None and f.get("folder") and fund_reader:
+                rd = fund_reader(f["folder"], invested) or {}
+                note = rd.get("note")
+                if rd.get("value") is not None:
+                    cv, asof, points = float(rd["value"]), rd.get("date"), [(d, v) for d, v in rd.get("series", [])]
+                    basis = f"report {rd.get('file', '')} of {asof}".strip()
+            if cv is None and f.get("isin") and f.get("units") and isin_price:
+                q = isin_price(f["isin"])
+                if q:
+                    cv, asof, basis = round(float(q["price_eur"]) * float(f["units"]), 2), q.get("date"), f"price of {q.get('sym')} ({asof or 'today'})"
+                    basis = f"price of {q.get('sym')} on {asof}" if asof else f"price of {q.get('sym')}"
+                    note = None
+            m = fund_model(f["payments"], cv, today)
+            if basis:
+                m["basis"] = basis
+            funds.append({"account_id": aid, "name": name, "isin": f.get("isin"), "note": note, "asof": asof, **m,
+                          "series": fund_series_points(f["payments"], points, m["value"], today)})
         else:
             other.append({"account_id": aid, "name": name, "value": float(f["value"]), "date": f.get("date")})
     for p in props:

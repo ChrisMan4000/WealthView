@@ -2,6 +2,20 @@
 
 The version number lives in one file, `version.js`, and is shown in the dashboard header, browser tab, intro, lock window and installer.
 
+## v1.24 (2026-11-19)
+- **Rating column** (Strong buy / Buy / Hold / Reduce / Sell) in the Securities and Crypto boxes: the same meta-score as the position pop-up, loaded in the background and remembered for 12 hours.
+- **Chat:** answers may be twice as long (`max_tokens` 8192, `timeout_s` 360); a small "delete chat" button clears the chat and the model's memory of it (the X only hides it).
+
+## v1.23 (2026-11-15)
+- **House or apartment in Germany:** the value follows the Bundesbank's official house price index for the kind of area you pick (7 largest cities, other cities, towns and rural districts, Germany average); your own price per m² overrides it. Immowelt/ImmoScout are not used (no public interface).
+- **Funds:** a folder of reports (CSV, PDF; unknown PDF layouts are read by your local LM Studio model and checked against the text), or the price by ISIN and units, or a typed value.
+
+## v1.22 (2026-11-14)
+- Typed assets count in the ring and allocation; real names and Yahoo symbols from the WKN (OpenFIGI); Coinbase read in plain Python (no Node.js); connection test button in Setup; pop-ups scale without scroll bars; boxes sit next to each other without gaps; the Ask box no longer invents rent income.
+
+## v1.21 (2026-11-14)
+- API connections for every kind of source (Coinbase, Binance, Kraken; keys in the Windows Credential Manager); larger small fonts for high-resolution screens; clearer apartment form; new animated installer logo and orange "Start WealthView" box.
+
 ## v1.20 (2026-11-13)
 - **Setup screen** in the dashboard (Setup button): add, rename, re-point, switch off or remove banks, investments and crypto places; folder picker; sub-folder switch; no bank names built in.
 - **Automatic CSV reader** for bank, card, depot and crypto exports of any layout, with one plain question when unsure (remembered per layout).

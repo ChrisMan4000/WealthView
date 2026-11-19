@@ -80,9 +80,10 @@ def _name(f: dict[str, Any]) -> str:
 
 def validate(kind: str, raw: dict[str, Any]) -> dict[str, Any]:
     """The cleaned fields of a typed asset, or ValueError with a plain sentence for the person.
-    property: name, country (2 letters), purchase_price, purchase_date, optional current_estimate, size_m2.
+    property: name, country (2 letters), purchase_price, purchase_date, optional current_estimate, size_m2, price_per_m2 (own local price, needs size_m2),
+    area (Germany: big7, city, district or germany - which official price index to follow).
     loan: name, amount, start_date, rate_pct, monthly or end_date, optional property (name of a property).
-    fund: name, payments [{date, amount}] (or invested + since), optional current_value, isin.   other: name, value, optional date."""
+    fund: name, payments [{date, amount}] (or invested + since), optional current_value, isin, units (for the price by ISIN), folder (reports: CSV or PDF).   other: name, value, optional date."""
     if kind not in ASSET_KINDS:
         raise ValueError(f"unknown kind: {kind}")
     if not isinstance(raw, dict):
@@ -95,10 +96,17 @@ def validate(kind: str, raw: dict[str, Any]) -> dict[str, Any]:
         out["country"] = country
         out["purchase_price"] = _number(raw.get("purchase_price"), "the purchase price", minimum=1)
         out["purchase_date"] = _date(raw.get("purchase_date"), "the purchase date")
-        for k, what in (("current_estimate", "the current estimate"), ("size_m2", "the size")):
+        for k, what in (("current_estimate", "the current estimate"), ("size_m2", "the size"), ("price_per_m2", "the price per square metre")):
             v = _number(raw.get(k), what, minimum=1, required=False)
             if v is not None:
                 out[k] = v
+        if "price_per_m2" in out and "size_m2" not in out:
+            raise ValueError("the size in square metres is needed with a price per square metre")
+        area = str(raw.get("area") or "").strip().lower()
+        if area:
+            if area not in ("big7", "city", "district", "germany"):
+                raise ValueError("the area type must be big7, city, district or germany")
+            out["area"] = area
     elif kind == "loan":
         out["amount"] = _number(raw.get("amount"), "the amount borrowed", minimum=1)
         out["start_date"] = _date(raw.get("start_date"), "the start date")
@@ -124,7 +132,15 @@ def validate(kind: str, raw: dict[str, Any]) -> dict[str, Any]:
         if cv is not None:
             out["current_value"] = cv
         if str(raw.get("isin") or "").strip():
-            out["isin"] = str(raw["isin"]).strip().upper()[:12]
+            isin = str(raw["isin"]).strip().upper().replace(" ", "")
+            if not re.fullmatch(r"[A-Z]{2}[A-Z0-9]{9}\d", isin):
+                raise ValueError("the ISIN must be 12 characters, such as IE00B4L5Y983")
+            out["isin"] = isin
+        units = _number(raw.get("units"), "the number of units", minimum=0.000001, required=False)
+        if units is not None:
+            out["units"] = units
+        if str(raw.get("folder") or "").strip():
+            out["folder"] = str(raw["folder"]).strip()[:260]
     else:
         out["value"] = _number(raw.get("value"), "the value", minimum=0)
         d = _date(raw.get("date"), "the date", required=False)
