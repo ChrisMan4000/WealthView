@@ -1,0 +1,46 @@
+name: Track Git Clones
+
+# GitHub only keeps 14 days of clone numbers.
+# This saves them daily into stats/clones.csv so they never get lost.
+
+on:
+  schedule:
+    - cron: "17 3 * * *"   # every day 03:17 UTC
+  workflow_dispatch:        # lets you press "Run workflow" by hand
+
+permissions:
+  contents: write
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch and merge clone numbers
+        env:
+          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+        run: |
+          mkdir -p stats
+          f=stats/clones.csv
+          [ -f "$f" ] || echo "date,clones,unique" > "$f"
+
+          gh api "repos/${{ github.repository }}/traffic/clones" \
+            --jq '.clones[] | "\(.timestamp[0:10]),\(.count),\(.uniques)"' > new.txt
+
+          # old rows first, new rows second: new rows win for the same date
+          { tail -n +2 "$f"; cat new.txt; } \
+            | awk -F, '{r[$1]=$0} END{for(k in r) print r[k]}' \
+            | sort > merged.txt
+          { echo "date,clones,unique"; cat merged.txt; } > "$f"
+          rm new.txt merged.txt
+
+      - name: Save to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add stats/clones.csv
+          git diff --cached --quiet || {
+            git commit -m "Update clone stats [skip ci]"
+            git push
+          }
