@@ -2,9 +2,9 @@
 
 Pure functions, no files, no network. Used by gls_block.py and bookings.py (flow model)."""
 from __future__ import annotations
-import hashlib, logging, re
+import hashlib, importlib, logging, re
 from functools import lru_cache
-from typing import Callable
+from typing import Callable, TypedDict
 
 from ...common.config import setting
 from ...common.types.bookings import BookingRow
@@ -93,8 +93,23 @@ SONSTIGES = "Sonstiges"
 # ------------------------------------------------------- your own corrections (v1.15)
 # Stored in the database (tables cat_rules / cat_overrides), loaded by the refresh before the bookings are classified.
 # Order: one booking's own correction > merchant rule > keyword rule > the built-in rules above.
-merchant_resolver: Callable[[BookingRow], str] | None = None      # set by bookings.py (merchant_and_domain lives there; this avoids an import cycle)
-_USER: dict[str, object] = dict(merchant={}, text=[], over={})
+merchant_resolver: Callable[[BookingRow], str] | None = None      # optional override; by default classify() loads bookings.merchant_and_domain on first use
+
+
+class _UserRules(TypedDict):
+    merchant: dict[str, str]
+    text: list[tuple[str, re.Pattern[str]]]
+    over: dict[str, str]
+
+
+_USER: _UserRules = _UserRules(merchant={}, text=[], over={})
+
+
+def _merchant_name(r: BookingRow) -> str:
+    """Display name of a booking for the merchant rules: the override if set, else bookings.merchant_and_domain (imported here, so it cannot be skipped)."""
+    if merchant_resolver is not None:
+        return merchant_resolver(r)
+    return importlib.import_module(".bookings", __package__).merchant_and_domain(r)[0]      # by name on purpose: a plain import would be a cycle (bookings imports this module)
 
 
 def override_key(r: BookingRow) -> str:
@@ -121,18 +136,18 @@ def set_user_rules(rules: list[tuple[str, str, str]], overrides: dict[str, str])
 def classify(r: BookingRow) -> str:
     over = _USER["over"]
     if over:
-        c = over.get(override_key(r))        # type: ignore[attr-defined]
+        c = over.get(override_key(r))
         if c:
             return str(c)
     mer = _USER["merchant"]
-    if mer and merchant_resolver:
-        c = mer.get(merchant_resolver(r).strip().lower())    # type: ignore[attr-defined]
+    if mer:
+        c = mer.get(_merchant_name(r).strip().lower())
         if c:
             return str(c)
     txt = _USER["text"]
     if txt:
         t = " ".join([r["counterparty"], r["purpose"][:160]])
-        for c, rx in txt:        # type: ignore[attr-defined]
+        for c, rx in txt:
             if rx.search(t):
                 return str(c)
     return _builtin(r)

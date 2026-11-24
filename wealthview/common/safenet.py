@@ -64,14 +64,16 @@ def fetch_bytes(url: str, timeout: int = 12, opener: urllib.request.OpenerDirect
         return r.read(max_bytes)
 
 
-def fetch_text(url: str, timeout: int = 12, opener: urllib.request.OpenerDirector | None = None, headers: dict[str, str] | None = None) -> str:
-    """GET `url` and return the body as text (UTF-8, undecodable bytes replaced)."""
-    return fetch_bytes(url, timeout, opener, headers).decode("utf-8", "replace")
+def fetch_text(url: str, timeout: int = 12, opener: urllib.request.OpenerDirector | None = None, headers: dict[str, str] | None = None,
+               max_bytes: int = MAX_BYTES) -> str:
+    """GET `url` and return the body as text (UTF-8, undecodable bytes replaced); reads at most `max_bytes`."""
+    return fetch_bytes(url, timeout, opener, headers, max_bytes).decode("utf-8", "replace")
 
 
-def fetch_json(url: str, timeout: int = 12, opener: urllib.request.OpenerDirector | None = None, headers: dict[str, str] | None = None) -> Any:
-    """GET `url` and parse the body as JSON."""
-    return json.loads(fetch_text(url, timeout, opener, headers))
+def fetch_json(url: str, timeout: int = 12, opener: urllib.request.OpenerDirector | None = None, headers: dict[str, str] | None = None,
+               max_bytes: int = MAX_BYTES) -> Any:
+    """GET `url` and parse the body as JSON; reads at most `max_bytes`."""
+    return json.loads(fetch_text(url, timeout, opener, headers, max_bytes))
 
 
 def rss_items(root: ET.Element) -> list[dict[str, Any]]:

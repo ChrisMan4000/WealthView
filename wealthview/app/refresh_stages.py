@@ -5,7 +5,7 @@ from ..common import config, safenet
 from ..common.paths import data_path
 from ..common.profile import load_profile
 from ..common.parsing import iso
-from ..common.runcontext import RunContext, UNCHANGED, db_unchanged_note, run_stage, unchanged_note
+from ..common.runcontext import RunContext, db_unchanged_note, run_stage, unchanged_note
 from ..common.timeutil import now, today
 from ..common.types.bookings import BookingRow, Coverage
 from ..common.types.datajson import DataJson, DbBlock
@@ -15,7 +15,7 @@ from ..data.finance import catrules
 from ..data.finance.lots import parse_trades
 from ..data.finance.positions import enrich_depot
 from ..data.ingest.loaders import GLS_CACHE_NAME
-from ..data.ingest import db_import, db_migrate, db_queries, db_schema, loaders
+from ..data.ingest import db_accounts, db_import, db_migrate, db_queries, db_schema, fints_sync, keystore, loaders
 
 
 DB_ERRORS = (sqlite3.Error, OSError, ValueError, KeyError, TypeError)      # what a failing database read can raise
@@ -44,29 +44,61 @@ def upgrade_db(conn: sqlite3.Connection) -> str | None:
     return None if rep["ok"] else (rep["error"] or "unknown error")
 
 
+def _skipped_sync_report() -> SyncReport:
+    """The sync report for a run that found the watched folders unchanged: nothing was imported."""
+    return SyncReport(at=now().isoformat(timespec="seconds"), seen=0, unchanged=0, new_files=[], duplicate_files=[], errors=[],
+                      new_bookings=0, new_paypal=0, new_depot=0, skipped=True)
+
+
+def import_new_files(ctx: RunContext, conn: sqlite3.Connection) -> SyncReport:
+    """Imports new or changed files from the watched folders, or skips the import (and marks ctx.db_unchanged) when nothing changed."""
+    if has_data(conn) and not db_import.folders_changed(conn, config.load_config()):
+        ctx.mark_db_unchanged("no new or changed files")
+        return _skipped_sync_report()
+    return db_import.sync(conn, config.load_config())
+
+
+def sync_bank(ctx: RunContext, conn: sqlite3.Connection) -> None:
+    """Pulls new bookings over FinTS (a failure only warns)."""
+    def bank_sync() -> None:
+        places = [x for x in db_accounts.list_sources(conn) if x["source_type"] == "api" and x["connector"] == "fints"]
+        r = fints_sync.sync_bank(conn, places, keystore.load, min_hours=float((config.load_config().get("fints") or {}).get("min_hours", 12)), holdings=True)
+        if r["status"] != "off":
+            ctx.set_status("bank sync", "ok" if r["status"] == "ok" else "warn", r["message"])
+            for w in r["warnings"]:
+                ctx.add_alert("warn", w)
+    run_stage(ctx, "refresh_stages.fints", bank_sync, None, status="bank sync", msg="bank sync failed: ", errors=(OSError, ValueError, KeyError, TypeError, sqlite3.Error, RuntimeError))
+
+
+def seed_snapshots(ctx: RunContext, conn: sqlite3.Connection) -> None:
+    """One-time import of history.json into an empty snapshots table (a failure is only logged)."""
+    def seed() -> None:
+        hf = data_path("history.json")
+        if hf.exists() and not conn.execute("SELECT 1 FROM snapshots LIMIT 1").fetchone():      # one-time import into an empty database
+            db_queries.seed_snapshots_from_history(conn, json.loads(hf.read_text("utf-8-sig")))
+    run_stage(ctx, "refresh_stages.open_db", seed, None, errors=(OSError, ValueError, KeyError, TypeError, sqlite3.Error))
+
+
 def open_db(ctx: RunContext) -> tuple[sqlite3.Connection | None, SyncReport | None]:
     """(connection, sync report) - imports new files from the watched folders first. (None, None) if the database cannot be used."""
+    conn: sqlite3.Connection | None = None
     try:
         conn = db_schema.connect(data_path(db_schema.DB_NAME))
         postponed = upgrade_db(conn)
-        rep: SyncReport
-        if has_data(conn) and not db_import.folders_changed(conn, config.load_config()):
-            rep = dict(at=now().isoformat(timespec="seconds"), seen=0, unchanged=0, new_files=[], duplicate_files=[], errors=[],
-                       new_bookings=0, new_paypal=0, new_depot=0, skipped=True)
-            ctx.set_status("database", "ok", "no new or changed files" + UNCHANGED)
-        else:
-            rep = db_import.sync(conn, config.load_config())
-        def seed_snapshots() -> None:
-            hf = data_path("history.json")
-            if hf.exists() and not conn.execute("SELECT 1 FROM snapshots LIMIT 1").fetchone():      # one-time import into an empty database
-                db_queries.seed_snapshots_from_history(conn, json.loads(hf.read_text("utf-8-sig")))
-        run_stage(ctx, "refresh_stages.open_db", seed_snapshots, None, errors=(OSError, ValueError, KeyError, TypeError, sqlite3.Error))
+        rep = import_new_files(ctx, conn)
+        sync_bank(ctx, conn)
+        seed_snapshots(ctx, conn)
         if postponed:
             ctx.set_status("database", "warn", "database upgrade postponed: " + postponed)
         return conn, rep
     except Exception as e:      # broad on purpose: the database is optional, the refresh falls back to reading the files
         safenet.log.warning("database not usable: %s", e)
         ctx.set_status("database", "warn", "database not usable, reading the files directly: " + str(e))
+        if conn is not None:
+            try:
+                conn.close()
+            except sqlite3.Error:
+                pass
         return None, None
 
 
@@ -137,7 +169,11 @@ def load_rows(ctx: RunContext, conn: sqlite3.Connection | None) -> list[BookingR
 def load_depot_with_trades(ctx: RunContext, rows: list[BookingRow], conn: sqlite3.Connection | None = None) -> Depot | None:
     """Depot with live quotes, plus the purchases read from the bank bookings (a failure only warns). Reads only - the
     caller saves the trades (see save_trades)."""
-    depot = loaders.load_depot(ctx)
+    depot = None
+    if conn is not None and loaders.has_bank_depot(conn):       # v1.28: the bank's own securities answer is newer than any depot file
+        depot = run_stage(ctx, "refresh_stages.load_depot_bank", lambda: loaders.load_depot_db(ctx, conn, bank_only=True), None, status="depot", msg="depot from the bank could not be read: ")
+    if depot is None:
+        depot = loaders.load_depot(ctx)
     if depot is None and conn is not None:       # no depot file of the old setup: use what the automatic reader stored
         depot = run_stage(ctx, "refresh_stages.load_depot_db", lambda: loaders.load_depot_db(ctx, conn), None, status="depot", msg="depot from the database could not be read: ")
     if depot:

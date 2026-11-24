@@ -2,6 +2,12 @@
 
 The version number lives in one file, `version.js`, and is shown in the dashboard header, browser tab, intro, lock window and installer.
 
+## v1.31 (2026-11-24)
+- **Bond pop-up:** shows key terms (rate, term, payouts, issuer rights), expected payouts, risks and a firm-health box when terms are configured; the Alternatives box shows the next payout. Hidden when no terms are set.
+- **Groceries pop-up:** spending on online grocery orders, opened from the "Spending by category" box (needs imported order data; hidden otherwise).
+- **FinTS bank sync (read-only):** optional "Bank via FinTS" step in the setup wizard with a how-to; the app can never send payments or transaction commands.
+- Setup and installer fixes since v1.24; installer rebuilt at v1.31.
+
 ## v1.24 (2026-11-19)
 - **Rating column** (Strong buy / Buy / Hold / Reduce / Sell) in the Securities and Crypto boxes: the same meta-score as the position pop-up, loaded in the background and remembered for 12 hours.
 - **Chat:** answers may be twice as long (`max_tokens` 8192, `timeout_s` 360); a small "delete chat" button clears the chat and the model's memory of it (the X only hides it).

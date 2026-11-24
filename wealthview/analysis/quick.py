@@ -49,7 +49,8 @@ def quick_depot(data: DataJson, px: dict[str, float]) -> None:
                     p["gain_pct"] = round2((p["value"] / cost - 1) * 100)
         depot_totals(d)
         if data["nw"].get("Securities") and _last_point_is_current(data):
-            data["nw"]["Securities"][-1] = round(sum(p["value"] for p in d["positions"]), 0)
+            funds = (data.get("assets") or {}).get("funds") or []      # typed funds join Securities in the full refresh (assets.add_to_nw): same here
+            data["nw"]["Securities"][-1] = round(sum(p["value"] for p in d["positions"]) + sum(float(f.get("value") or 0) for f in funds), 0)
     cb = data.get("crypto")
     if cb and data["nw"].get("Crypto") and _last_point_is_current(data):
         data["nw"]["Crypto"][-1] = round(cb["total_eur"], 0)

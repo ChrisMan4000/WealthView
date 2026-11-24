@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Any
 import json
 from pathlib import Path
-from . import paths, safenet
+from typing import Callable
+from . import fileio, paths, safenet
 
 
 class _ConfigCache:
@@ -29,6 +30,17 @@ def load_config() -> dict[str, Any]:
         _CONFIG.value = json.loads(f.read_text("utf-8-sig"))
         _CONFIG.mtime_ns = mtime
     return _CONFIG.value
+
+
+def update_config(change: Callable[[dict[str, Any]], None]) -> None:
+    """Read-modify-write of config.json: read it (utf-8-sig; a missing file counts as {}), let `change` edit the dict in place, write it back
+    atomically (indent 2). Raises OSError / ValueError (unreadable file, invalid JSON, top level not an object); nothing is written then."""
+    f = paths.BASE / "config.json"
+    cfg = json.loads(f.read_text("utf-8-sig")) if f.exists() else {}
+    if not isinstance(cfg, dict):
+        raise ValueError("config.json must hold a JSON object")
+    change(cfg)
+    fileio.write_atomic(f, json.dumps(cfg, ensure_ascii=False, indent=2) + "\n")
 
 
 def setting(name: str, default: Any = None) -> Any:

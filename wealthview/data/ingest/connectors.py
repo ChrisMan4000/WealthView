@@ -38,11 +38,12 @@ CONNECTORS: tuple[Connector, ...] = (
     Connector(id="kraken", label="Kraken", sections=("crypto",), ready=True, env=(),
               fields=[_f("api_key", "API key"), _f("private_key", "Private key", True)],
               note=_VIEW + " Kraken: Settings > API > create key with only the permission \"Query funds\"."),
-    Connector(id="fints", label="FinTS / HBCI (most German banks)", sections=("bank", "investment"), ready=False, env=(),
+    Connector(id="fints", label="FinTS / HBCI (most German banks)", sections=("bank", "investment"), ready=True, env=(),
               fields=[_f("blz", "Bank code (BLZ)", hint="8 digits"), _f("url", "FinTS address of the bank", hint="https://..."),
-                      _f("login", "Online banking login name"), _f("product_id", "FinTS product ID", hint="from the registration at fints.org")],
-              note="The connection details are saved now. Reading the bank through FinTS is not switched on yet in this version: it needs a registered "
-                   "FinTS product ID and a first sign-in confirmed in your bank app. Until then, keep using the folder of exports. No PIN is asked for here."),
+                      _f("login", "Online banking login name"), _f("product_id", "FinTS product ID", hint="from the registration at fints.org"),
+                      _f("pin", "Online banking PIN", True)],
+              note="WealthView only READS accounts, balances and bookings - it never sends a payment. Each refresh asks your bank app (for example SecureGo plus) "
+                   "to confirm the login; no confirmation just means no new bookings that time. A wrong PIN pauses the sync so the bank does not lock the account."),
 )
 BY_ID = {c["id"]: c for c in CONNECTORS}
 

@@ -7,7 +7,7 @@
   const W = () => window.WV;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const JSONH = { 'content-type': 'application/json' };
-  const TABS = [['bank', 'Banks & cards'], ['investment', 'Investments'], ['crypto', 'Crypto'], ['questions', 'Questions']];
+  const TABS = [['bank', 'Banks & cards'], ['investment', 'Investments'], ['crypto', 'Crypto'], ['settings', 'Settings'], ['questions', 'Questions']];
   const KINDS = { property: 'House / apartment', loan: 'Loan', fund: 'Fund', other: 'Other investment' };
   const FIELDS = {
     property: [['name', 'Name', 'Flat Berlin'], ['country', 'Country (2 letters)', 'DE'], ['purchase_price', 'Purchase price, EUR', '250.000'], ['purchase_date', 'Purchase date', '15.03.2019'], ['area', 'Kind of area (Germany: picks the official price index)', '@area'], ['size_m2', 'Size, m² (optional)', '75'], ['price_per_m2', 'Your own local price per m², EUR (optional, replaces the index)', '4.200'], ['current_estimate', 'Your own value today, EUR (optional, replaces everything)', '']],
@@ -52,7 +52,7 @@
        source that makes /api/real fail (loadReal's catch) would lock the user out of the one screen that
        can fix it */
     const w = W(); if (!w || !w.S.token) return;
-    css(); pending = 0; tab = 'bank'; note = ''; form = null; pick = null;
+    css(); wireHeld(); pending = 0; tab = 'bank'; note = ''; form = null; pick = null; SET = null;
     w.modalShell('Setup · where your data comes from', w.badge('static', 'Your setup'), 'fit');
     const box = document.getElementById('mdl'); if (box) box.classList.add('wide');      /* v1.21: wide enough for every row, so no sideways scroll bar */
     const m = document.getElementById('modal'), done = () => { document.removeEventListener('keydown', onKey, true); const n = pending; pending = 0; w.closeModal(); if (n > 0) { w.S.mode === 'real' ? w.reloadData() : w.loadReal(false); } };
@@ -63,7 +63,17 @@
     reload().then(draw).catch(err);
   }
 
+  /* v1.27 double-click fix: leaving a field saves it and redraws the window; that redraw used to swap the button under the mouse
+     between press and release, so the click was lost. While a mouse button is down the redraw waits, and runs right after the click. */
+  let held = false, lateDraw = false, heldWired = false;
+  function wireHeld() {
+    if (heldWired) return; heldWired = true;
+    document.addEventListener('mousedown', () => { held = true; }, true);
+    const up = () => { if (!held) return; held = false; if (lateDraw) { lateDraw = false; setTimeout(draw, 0); } };
+    document.addEventListener('mouseup', up, true); window.addEventListener('blur', up);
+  }
   function draw() {
+    if (held) { lateDraw = true; return; }
     const el = root(); if (!el || !D) return;
     const nq = D.questions.length;
     const tabs = TABS.map(([k, n]) => `<button class="sptab ${k === tab ? 'on' : ''}" data-t="${k}">${esc(n)}${k === 'questions' && nq ? ` <b class="spq">${nq}</b>` : ''}</button>`).join('');
@@ -72,7 +82,7 @@
     el.querySelectorAll('.sptab').forEach(b => b.onclick = () => { tab = b.dataset.t; form = null; pick = null; note = ''; draw(); });
     const ap = el.querySelector('#spApply'); if (ap) ap.onclick = async () => { ap.disabled = true; ap.textContent = 'Updating…'; const n = pending; const ok = await W().reloadData(); if (ok) pending = Math.max(0, pending - n); draw(); };
     const c = el.querySelector('#spbody');
-    if (tab === 'questions') drawQuestions(c); else { drawSources(c, tab); if (tab === 'investment') drawAssets(c); if (tab === 'bank') drawBalances(c); }
+    if (tab === 'questions') drawQuestions(c); else if (tab === 'settings') drawSettings(c); else { drawSources(c, tab); if (tab === 'investment') drawAssets(c); if (tab === 'bank') drawBalances(c); }
   }
 
   const HELP = {
@@ -238,6 +248,40 @@
     c.insertAdjacentHTML('beforeend', `<div class="cph" style="margin-top:1.2rem">ACCOUNT BALANCES · only needed when an account's files do not show a balance</div>${acc.map(a => `<div class="spr" data-aid="${a.id}"><div class="spn"><b>${esc(a.name)}</b> ${a.balance != null ? `<span class="dim xs">typed: ${fmt(a.balance)} on ${esc(a.balance_date)}</span>` : ''}</div>
       <div class="spo"><input class="spi" style="width:9rem" data-b placeholder="Balance, EUR"><button data-a="bal">Save</button></div></div>`).join('')}`);
     c.querySelectorAll('.spr[data-aid]').forEach(r => r.querySelector('[data-a=bal]').onclick = () => change('/api/setup/balance', { account_id: +r.dataset.aid, value: r.querySelector('[data-b]').value, date: today }, 'balance saved'));
+  }
+
+  /* ---- v1.27 Settings tab: shares to watch (not owned; shown at the end of the securities box) and the few settings worth changing.
+     Values are saved when a field is left; nothing is redrawn then, so the next click always lands. ---- */
+  let SET = null;      /* { fields, watch } once loaded */
+  async function loadSet(redraw) {
+    try { const [s, w] = await Promise.all([get('/api/settings'), get('/api/watch')]); SET = { fields: s.fields, watch: w.items }; }
+    catch (e) { SET = SET || { fields: [], watch: [] }; err(e); }
+    if (redraw && tab === 'settings') draw();
+  }
+  function drawSettings(c) {
+    if (!SET) { c.innerHTML = '<div class="dim" style="padding:1.5rem"><span class="spinner"></span> loading…</div>'; loadSet(true); return; }
+    const wl = SET.watch.map(w => `<div class="spr" data-sym="${esc(w.sym)}"><div class="spn"><b>${esc(w.name)}</b> <span class="dim xs">${esc(w.sym)}</span></div><div class="spo"><button data-a="wdel">Remove</button></div></div>`).join('');
+    const rows = SET.fields.map(f => `<div class="spr"><div class="spn"><b>${esc(f.label)}</b><br><span class="dim xs">${esc(f.hint)}</span></div><div class="spo"><input class="spi" style="width:9rem" inputmode="decimal" data-key="${esc(f.key)}" value="${esc(String(f.value == null ? '' : f.value).replace('.', ','))}"><span class="xs dim spok" style="min-width:5rem"></span></div></div>`).join('');
+    c.innerHTML = `<div class="cph">SHARES TO WATCH · NOT OWNED · SHOWN AT THE END OF THE SECURITIES BOX WITH LIVE PRICE AND CHANGE TODAY</div>${wl || '<div class="dim" style="padding:.8rem 0">No shares to watch yet.</div>'}
+      <div class="spform"><div class="sprow"><input id="spWl" class="spf" placeholder="Company name, ticker or ISIN, e.g. Orange, ORA.PA, SAP.DE" maxlength="80" autocomplete="off" spellcheck="false"> <button id="spWlAdd">Add share</button></div><div class="spmsg"></div></div>
+      <div class="cph" style="margin-top:1.2rem">SETTINGS · SAVED WHEN YOU LEAVE THE FIELD · USED FROM THE NEXT UPDATE</div>${rows}`;
+    const inp = c.querySelector('#spWl'), btn = c.querySelector('#spWlAdd');
+    const add = async () => {
+      const q = inp.value.trim(); if (!q || btn.disabled) return;
+      btn.disabled = true; btn.textContent = 'Looking it up…';
+      try { await post('/api/watch/set', { action: 'add', sym: q }); await loadSet(false); W().loadWatch(true); note = 'share added'; draw(); }
+      catch (e) { btn.disabled = false; btn.textContent = 'Add share'; err(e); }
+    };
+    btn.onclick = add; inp.onkeydown = e => { if (e.key === 'Enter') add(); };
+    c.querySelectorAll('[data-a=wdel]').forEach(b => b.onclick = async () => {
+      const sym = b.closest('.spr').dataset.sym;
+      try { await post('/api/watch/set', { action: 'delete', sym }); await loadSet(false); W().loadWatch(true); note = 'share removed'; draw(); } catch (e) { err(e); }
+    });
+    c.querySelectorAll('input[data-key]').forEach(x => x.onchange = async () => {
+      const ok = x.parentNode.querySelector('.spok'); ok.className = 'xs dim spok'; ok.textContent = 'saving…';
+      try { await post('/api/settings/set', { key: x.dataset.key, value: x.value }); ok.className = 'xs pos spok'; ok.textContent = '✓ saved'; }
+      catch (e) { ok.className = 'xs or spok'; ok.textContent = '✗ ' + (e && e.message || 'not saved'); }
+    });
   }
 
   function drawQuestions(c) {

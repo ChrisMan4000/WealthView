@@ -19,6 +19,7 @@ class RunContext:
     status: dict[str, SourceStatus] = field(default_factory=dict)
     alerts: list[Alert] = field(default_factory=list)
     cache_hits: dict[str, bool] = field(default_factory=dict)      # parse-cache name -> True when the last cached_parse() used the cache
+    db_unchanged: bool = False      # the database sync was skipped (folders unchanged); any later "database" status line resets it
     _lock: Any = field(default_factory=threading.RLock, repr=False, compare=False)
 
     def set_status(self, name: str, state: State, msg: str = "", *, detail: list[str] = _NOT_GIVEN, asof: str | None = _NOT_GIVEN,
@@ -33,6 +34,14 @@ class RunContext:
             entry["live"] = live
         with self._lock:
             self.status[name] = entry
+            if name == "database":
+                self.db_unchanged = False       # a newer database line replaces the "unchanged" one
+
+    def mark_db_unchanged(self, msg: str) -> None:
+        """Status line 'database: ok' for a skipped sync; db_unchanged_note() then reports UNCHANGED (until another database line is set)."""
+        with self._lock:
+            self.set_status("database", "ok", msg + UNCHANGED)
+            self.db_unchanged = True
 
     def add_alert(self, level: Level, text: str) -> None:
         with self._lock:
@@ -66,6 +75,6 @@ def unchanged_note(ctx: RunContext, cache_name: str) -> str:
 
 
 def db_unchanged_note(ctx: RunContext) -> str:
-    """' · unchanged since last read' when the database sync was skipped (refresh_stages.open_db marks its status text with UNCHANGED)."""
-    database = ctx.snapshot().get("database")
-    return UNCHANGED if database and database["msg"].endswith(UNCHANGED) else ""
+    """' · unchanged since last read' when the database sync was skipped (ctx.db_unchanged, set by refresh_stages.open_db)."""
+    with ctx._lock:
+        return UNCHANGED if ctx.db_unchanged else ""

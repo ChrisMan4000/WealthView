@@ -324,7 +324,10 @@ def read_folder(folder: str, ask: Callable[[str, str], str] | None = None, inves
     found: list[dict[str, Any]] = []
     notes: list[str] = []
     for p in files:
-        st = p.stat()
+        try:
+            st = p.stat()
+        except OSError:
+            continue
         key = f"{p.name}|{st.st_size}|{int(st.st_mtime)}|{int(invested or 0)}"
         if cache is not None and key in cache:
             r = cache[key]

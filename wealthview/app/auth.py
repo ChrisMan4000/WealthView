@@ -1,8 +1,9 @@
 """WealthView sign-in: PIN hashing, the `python server.py --set-pin` command, session tokens and the lock-out after wrong PINs."""
 from __future__ import annotations
 from typing import Any, NamedTuple
-import getpass, hashlib, hmac, json, secrets, threading, time, unicodedata
-from ..common import audit, config, fileio, paths
+import getpass, hmac, secrets, threading, time
+from ..common import audit, config
+from ..common.pinhash import PIN_ITERATIONS, hash_pin  # noqa: F401  (re-exported: auth.hash_pin / auth.PIN_ITERATIONS)
 from ..common.timeutil import HOUR_S
 
 MAX_PIN_FAILS = 5
@@ -10,16 +11,7 @@ WRONG_PIN_MESSAGE = "wrong PIN"
 PIN_LOCKOUT_S = 60
 WRONG_PIN_DELAY_S = 0.8     # a wrong PIN is answered with this delay
 TOKEN_TTL = 12 * HOUR_S
-PIN_ITERATIONS = 200_000
 MAX_PIN_LENGTH = 1024
-
-
-def hash_pin(pin: Any, salt: bytes | None = None, iterations: int = PIN_ITERATIONS) -> str:
-    """Salted PBKDF2-SHA256 of the PIN (Unicode NFC-normalised first, so composed and decomposed accents match), stored as
-    'pbkdf2$iterations$salt$hash' (config.json -> pin_hash)."""
-    salt = salt if salt is not None else secrets.token_bytes(16)
-    h = hashlib.pbkdf2_hmac("sha256", unicodedata.normalize("NFC", str(pin)).encode(), salt, iterations)
-    return f"pbkdf2${iterations}${salt.hex()}${h.hex()}"
 
 
 def pin_setup_error(cfg: dict[str, Any]) -> str | None:
@@ -49,12 +41,11 @@ def set_pin() -> int:
     if not pin or pin != getpass.getpass("Same PIN again: "):
         print("The PINs are empty or different - nothing changed.")
         return 1
-    path = paths.BASE / "config.json"
-    try:
-        cfg = json.loads(path.read_text("utf-8-sig")) if path.exists() else {}
+    def store_hash(cfg: dict[str, Any]) -> None:
         cfg["pin_hash"] = hash_pin(pin)
         cfg.pop("pin_sha256", None)                         # the old unsalted field is not used any more
-        fileio.write_atomic(path, json.dumps(cfg, ensure_ascii=False, indent=2) + "\n")
+    try:
+        config.update_config(store_hash)
     except (OSError, ValueError) as exc:
         print("Could not write config.json:", exc)
         return 1
@@ -121,8 +112,8 @@ class AuthState:
                 audit.record("lockout_started", f"{PIN_LOCKOUT_S} s")
         return PinResult(200, {"ok": False, "error": WRONG_PIN_MESSAGE}, wrong=True)
 
-    def check_pin(self, pin: Any) -> tuple[int, dict[str, Any]]:
-        """attempt() as a plain (HTTP code, reply) pair."""
+    def verify_and_record(self, pin: Any) -> tuple[int, dict[str, Any]]:
+        """attempt() as a plain (HTTP code, reply) pair. Counts failed tries and can start the lock-out, so it is not a pure check."""
         res = self.attempt(pin)
         return res.code, res.reply
 

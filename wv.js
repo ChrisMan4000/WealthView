@@ -132,6 +132,7 @@
     const ax = raw.axis; let first = ax.findIndex((_, i) => raw.series.some(s => s.v[i] != null)); if (first < 0) first = 0;
     const cut = o.range === 'MAX' ? 0 : Math.max(0, ax.length - ({ '1Y': 12, '3Y': 36, '5Y': 60 }[o.range] || ax.length)), i0 = Math.max(first, cut);
     let x = ax.slice(i0), ser = raw.series.map(s => Object.assign({}, s, { v: s.v.slice(i0) }));
+    if (o.year) { const keep = x.map(m => m.startsWith(o.year)); x = x.filter((_, i) => keep[i]); ser = ser.map(s => Object.assign(s, { v: s.v.filter((_, i) => keep[i]) })); }      /* v1.27: one year only, month by month */
     if (o.gran === 'Y') {
       const ys = [...new Set(x.map(m => m.slice(0, 4)))];
       ser = ser.map(s => Object.assign(s, { v: ys.map(y => { const vs = s.v.filter((_, i) => x[i].startsWith(y) && s.v[i] != null); if (!vs.length) return null; return (raw.kind === 'flow' || s.flow) ? vs.reduce((a, b) => a + b, 0) : vs[vs.length - 1]; }) }));
@@ -161,7 +162,8 @@
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
   function statsFor(c, kind) {
     const ser = c.series.filter(s => !s.off); if (!ser.length) return '';
-    const tot = c.x.map((_, i) => c.stacked ? ser.reduce((a, s) => a + (s.v[i] || 0), 0) : (ser[0].v[i])); const vs = tot.filter(v => v != null); if (!vs.length) return '';
+    /* v1.27: the totals add the stacked classes only - a fixed line (the dashed "Net" line of the gross chart) is not a layer and used to be added on top (Now = gross + net = 2,4 M) */
+    const layers = ser.filter(s => !s.fixed), tot = c.x.map((_, i) => c.stacked || c.sumAll ? layers.reduce((a, s) => a + (s.v[i] || 0), 0) : (ser[0].v[i])); const vs = tot.filter(v => v != null); if (!vs.length) return '';
     const a = vs[0], b = vs[vs.length - 1], mn = Math.min(...vs), mx = Math.max(...vs), months = c.x.length * (c.x[0] && c.x[0].length === 4 ? 12 : 1);
     if (kind === 'flow') { const sum = vs.reduce((x, y) => x + y, 0); return `<div>Total in range<b>${A(sum)}</b></div><div>Average per ${c.x[0].length === 4 ? 'year' : 'month'}<b>${A(sum / vs.length)}</b></div><div>Highest<b>${A(mx)}</b></div><div>Lowest<b>${A(mn)}</b></div>`; }
     const ch = b - a, cp = a ? ch / Math.abs(a) * 100 : null, cagr = a > 0 && b > 0 && months >= 12 ? (Math.pow(b / a, 12 / months) - 1) * 100 : null;
@@ -169,17 +171,18 @@
   }
   /* generic time-series modal. make() returns {axis, series:[{n,c,v,type?}], stacked?, kind?} on the monthly axis */
   function openTS(o) {
-    const m = modalShell(o.title, (o.heat ? '<button id="mheat" class="hmb">▦ Heatmap</button>' : '') + (o.badge || '')); if (o.heat) $('#mheat').onclick = () => { HEATCTX = { root: $('#mbody'), tools: $('#mtools'), back: () => openTS(o) }; try { o.heat(); } finally { HEATCTX = null; } }; const M = { range: S.range, gran: S.gran, type: o.type || (o.stacked ? 'area' : 'line') };
+    const m = modalShell(o.title, (o.heat ? '<button id="mheat" class="hmb">▦ Heatmap</button>' : '') + (o.badge || '')); if (o.heat) $('#mheat').onclick = () => { HEATCTX = { root: $('#mbody'), tools: $('#mtools'), back: () => openTS(o) }; try { o.heat(); } finally { HEATCTX = null; } }; const M = { range: S.range, gran: S.gran, year: null, type: o.type || (o.stacked ? 'area' : 'line') };
     const raw0 = o.make(); const tools = $('#mtools'), body = $('#mbody');
     body.innerHTML = `<div class="stats" id="mst"></div><div class="chart" id="mch"></div><div class="leg" id="mlg"></div>${o.extra ? '<div id="mex">' + o.extra() + '</div>' : ''}`;
     const draw = () => {
       const raw = raw0; raw.series.forEach(s => { if (!s.fixed) s.type = M.type === 'bar' ? 'bar' : M.type === 'area' ? 'area' : 'line'; });
-      const c = prep(Object.assign({}, raw, { stacked: raw.stacked && M.type !== 'line' }), M); TS($('#mch'), c);
+      const c = prep(Object.assign({}, raw, { stacked: raw.stacked && M.type !== 'line', sumAll: raw.stacked }), M); TS($('#mch'), c);
       $('#mst').innerHTML = statsFor(c, raw.kind); $('#mlg').innerHTML = raw.series.map((s, i) => `<span class="${s.off ? 'off' : ''}" data-i="${i}"><i style="background:${s.c}"></i>${esc(s.n)}</span>`).join('');
       $$('#mlg span').forEach(sp => sp.onclick = () => { raw.series[+sp.dataset.i].off = !raw.series[+sp.dataset.i].off; draw(); });
     };
-    const bar = () => { const ax0 = raw0.axis, f0 = Math.max(0, ax0.findIndex((_, i) => raw0.series.some(s => s.v[i] != null))), av = rangesFor(ax0.length - f0); if (!av.includes(M.range)) M.range = 'MAX'; tools.innerHTML = av.map(r => `<button data-r="${r}" class="${M.range === r ? 'on' : ''}">${r}</button>`).join('') + '<span class="sep"></span>' + `<button data-g="M" class="${M.gran === 'M' ? 'on' : ''}">Monthly</button><button data-g="Y" class="${M.gran === 'Y' ? 'on' : ''}">Yearly</button><span class="sep"></span>` + ['area', 'line', 'bar'].map(t => `<button data-t="${t}" class="${M.type === t ? 'on' : ''}">${t}</button>`).join('');
-      $$('#mtools button').forEach(b => b.onclick = () => { if (b.dataset.r) M.range = b.dataset.r; if (b.dataset.g) M.gran = b.dataset.g; if (b.dataset.t) M.type = b.dataset.t; bar(); draw(); }); };
+    const bar = () => { const ax0 = raw0.axis, f0 = Math.max(0, ax0.findIndex((_, i) => raw0.series.some(s => s.v[i] != null))), av = rangesFor(ax0.length - f0); if (!av.includes(M.range)) M.range = 'MAX'; tools.innerHTML = av.map(r => `<button data-r="${r}" class="${M.range === r ? 'on' : ''}">${r}</button>`).join('') + '<span class="sep"></span>' + `<button data-g="M" class="${M.gran === 'M' ? 'on' : ''}">Monthly</button><button data-g="Y" class="${M.gran === 'Y' ? 'on' : ''}">Yearly</button><span class="sep"></span>` + ['area', 'line', 'bar'].map(t => `<button data-t="${t}" class="${M.type === t ? 'on' : ''}">${t}</button>`).join('')
+        + (o.years ? '<span class="sep"></span>' + [...new Set(ax0.slice(f0).map(m => m.slice(0, 4)))].map(y => `<button data-y="${y}" class="${M.year === y ? 'on' : ''}" title="Show only ${y}, month by month (click again to go back)">${y}</button>`).join('') : '');
+      $$('#mtools button').forEach(b => b.onclick = () => { if (b.dataset.r) { M.range = b.dataset.r; M.year = null; } if (b.dataset.g) { M.gran = b.dataset.g; M.year = null; } if (b.dataset.t) M.type = b.dataset.t; if (b.dataset.y) { M.year = M.year === b.dataset.y ? null : b.dataset.y; if (M.year) { M.gran = 'M'; M.range = 'MAX'; } } bar(); draw(); }); };
     bar(); draw(); if (o.after) o.after(body);
   }
   function infoModal(title, html, badge) { modalShell(title, badge, 'fit'); $('#mbody').innerHTML = html; return $('#mbody'); }
@@ -256,16 +259,52 @@
   }
   const nwRaw = d => ({ axis: d.axis, kind: 'stock', stacked: true, series: CLS.map(k => ({ n: k, c: CCOL[k], v: (d.nw[k] || []).map(v => v == null ? null : v), type: 'area' })) });
 
+  /* v1.27: shares you watch but do not own (Setup > Settings): extra rows at the end of the positions list, live price and change today.
+     They are painted in place (no full redraw), so a click is never lost to a redraw. */
+  const WL_COLS = '1.2rem minmax(0,1.9fr) 1fr 1.3fr .8fr .95fr';
+  const WL_GREY = '#b4c4cd';          /* v1.27: watched shares are not owned - their name is light grey, not white */
+  function watchRows() {
+    const w = S.watch || []; if (!w.length || S.mode !== 'real') return '';
+    return `<div class="tr" style="grid-template-columns:${WL_COLS};margin-top:.75rem;padding-top:.5rem;border-top:1px solid rgba(60,190,235,.18)"><span></span><span class="xs dim" style="letter-spacing:.14em">WATCHING · NOT OWNED</span></div>` + w.map(p => `<div class="tr" style="grid-template-columns:${WL_COLS};cursor:pointer" data-wl="${esc(p.sym)}" title="Watched, not owned - click for the chart, meta-score and news"><span class="dim xs">◎</span><span class="nm">${logoFor(p.name)}<span class="t" style="color:${WL_GREY}">${esc(p.name)}<small>${p.price_eur == null ? '<span class="dim">no quote</span>' : '<span class="pos">●</span> ' + esc(p.sym)} · watch</small></span></span><span class="r">${p.price_eur == null ? '–' : nf2.format(p.price_eur) + ' €'}</span><span></span><span class="r ${cl(p.chg_pct)}" title="change today">${pct(p.chg_pct)}</span>${RT.cell('w:' + p.sym)}</div>`).join('');
+  }
+  function paintWatch() { const el = $('#wlRows'); if (el) { el.innerHTML = watchRows(); glowPass(); wlBind(); } }
+  /* clicks, ratings and logos of the watched rows - called after every paint, because the rows are replaced in place */
+  function wlBind() {
+    const w = S.watch || []; if (!w.length) return;
+    $$('#wlRows .tr[data-wl]').forEach(r => r.onclick = () => openWatch(r.dataset.wl));
+    RT.want(w.map(x => ({ k: 'w:' + x.sym, p: x })));
+    watchLogos();
+  }
+  /* company logos of the watched shares: the same online lookup and cache as the merchant logos (only the name leaves the PC) */
+  const WL_LOGO_TRIED = new Set();
+  async function watchLogos() {
+    if (S.mode !== 'real' || !S.token) return;
+    for (const w of (S.watch || [])) {
+      if ((window.SRC_LOGOS || {})['m:' + w.name] || WL_LOGO_TRIED.has(w.name)) continue;
+      WL_LOGO_TRIED.add(w.name);
+      try {
+        const r = await api('/api/logo?name=' + encodeURIComponent(w.name));
+        if (r && r.data) { (window.SRC_LOGOS = window.SRC_LOGOS || {})['m:' + w.name] = r.data; $$('[data-lgm]').filter(e => e.dataset.lgm === w.name).forEach(e => { e.outerHTML = logo('m:' + w.name, w.name); }); }
+      } catch (e) { /* no logo found: the initials stay */ }
+    }
+  }
+  let WATCH_BUSY = false;
+  async function loadWatch(force) {
+    if (S.mode !== 'real' || WATCH_BUSY || (!force && Date.now() - (S.watchAt || 0) < 30000)) return;
+    WATCH_BUSY = true;
+    try { const r = await api('/api/watch'); if (r && r.ok) { S.watch = r.items; S.watchAt = Date.now(); paintWatch(); } } catch (e) { /* no connection: the old rows stay */ } finally { WATCH_BUSY = false; }
+  }
   function pDepot(d) {
+    POST.push(() => loadWatch());
     const dp = d.depot; if (!dp) return panel('pDepot', 'Securities // positions', '', '<div class="empty">No depot data.</div>', { cls: 'grow4', style: 'flex:4' });
     const [sk, sd] = S.sort, ps = dp.positions.slice().sort((a, b) => sd * ((a[sk] > b[sk]) - (a[sk] < b[sk])) || 0), maxw = Math.max(...ps.map(p => p.weight || 0), 1);
     const cols = '1.2rem minmax(0,1.9fr) 1fr 1.3fr .8fr .95fr';
     const rows = ps.map((p, i) => `<div class="tr" style="grid-template-columns:${cols}" data-w="${esc(p.wkn)}"><span class="dim xs">${i + 1}</span><span class="nm">${logo(p.wkn, p.name)}<span class="t">${esc(p.name)}<small>${p.live ? '<span class="pos">●</span> ' + esc(p.sym || '') : '<span class="dim">■ static</span>'} · ${esc(p.cls)}</small></span></span><span class="r wh">${A(p.value)}</span><span><span class="bar"><i style="width:${(p.weight || 0) / maxw * 100}%"></i></span><span class="xs dim">${(p.weight || 0).toFixed(1).replace('.', ',')} %</span></span><span class="r ${cl(p.gain_pct)}">${pct(p.gain_pct)}</span>${RT.cell(p.wkn)}</div>`).join('');
     POST.push(() => RT.want(ps.map(p => ({ k: p.wkn, p }))));
     const head = `<div class="tr th" style="grid-template-columns:${cols}"><span>#</span><span class="s" data-s="name">Position</span><span class="s r" data-s="value">Value</span><span class="s" data-s="weight">Weight</span><span class="s r" data-s="gain_pct">P/L</span><span class="r" title="Meta-score of the position pop-up">Rating</span></div>`;
-    POST.push(() => { $$('#pDepot .tr[data-w]').forEach(r => r.onclick = () => openPos(r.dataset.w)); $$('#pDepot .th .s').forEach(s => s.onclick = () => { S.sort = [s.dataset.s, S.sort[0] === s.dataset.s ? -S.sort[1] : -1]; renderAll(); }); const t = $('#pDepot .dtit'); if (t) t.onclick = () => openSec(); });
+    POST.push(() => { $$('#pDepot .tr[data-w]').forEach(r => r.onclick = () => openPos(r.dataset.w)); $$('#pDepot .th .s').forEach(s => s.onclick = () => { S.sort = [s.dataset.s, S.sort[0] === s.dataset.s ? -S.sort[1] : -1]; renderAll(); }); const t = $('#pDepot .dtit'); if (t) t.onclick = () => openSec(); wlBind(); });
     return panel('pDepot', `<span class="dtit" style="cursor:pointer">Securities <b>//</b> ${dp.positions.length} positions</span>`, srcBadge('depot', d),
-      `<div class="kpis" style="grid-template-columns:repeat(4,1fr);margin-bottom:.5rem"><div class="kp" id="kDep"><div class="l">Depot value</div><div class="v">${A(dp.total)}</div><div class="s">${esc(d.mode === 'demo' ? 'demo' : 'export ' + dshort(dp.asof))}</div></div><div class="kp"><div class="l">Gain / loss</div><div class="v ${cl(dp.gain)}">${A(dp.gain)}</div><div class="s ${cl(dp.gain_pct)}">${pct(dp.gain_pct)}</div></div><div class="kp"><div class="l">Top position</div><div class="v" title="${esc(ps.slice().sort((a, b) => b.weight - a.weight)[0].name)}">${esc(ps.slice().sort((a, b) => b.weight - a.weight)[0].name.replace(/\s*\(ADR\)/i, ''))}</div><div class="s">${(ps.slice().sort((a, b) => b.weight - a.weight)[0].weight || 0).toFixed(0)} % of depot</div></div><div class="kp"><div class="l">Live quotes</div><div class="v">${dp.n_live}/${dp.n_total}</div><div class="s" title="${esc(dp.n_live < dp.n_total ? 'rest: export price' : 'all positions live')}${ps.some(x => x.quote_t) ? ' · latest trade ' + hms(Math.max(...ps.map(x => +x.quote_t || 0)) * (Math.max(...ps.map(x => +x.quote_t || 0)) < 1e12 ? 1000 : 1)) : ''}">${d.mode === 'demo' ? 'demo' : 'updated ' + hms(S.liveAt || d.generated)}</div></div></div><div class="tbl fill" style="overflow:auto">${head}${rows}</div><div class="xs dim" style="margin-top:.4rem">Click a position for its history · click column titles to sort · header opens total securities</div>`, { cls: '', style: 'flex:7;min-height:0', heat: heatSec });
+      `<div class="kpis" style="grid-template-columns:repeat(4,1fr);margin-bottom:.5rem"><div class="kp" id="kDep"><div class="l">Depot value</div><div class="v">${A(dp.total)}</div><div class="s">${esc(d.mode === 'demo' ? 'demo' : 'export ' + dshort(dp.asof))}</div></div><div class="kp"><div class="l">Gain / loss</div><div class="v ${cl(dp.gain)}">${A(dp.gain)}</div><div class="s ${cl(dp.gain_pct)}">${pct(dp.gain_pct)}</div></div><div class="kp"><div class="l">Top position</div><div class="v" title="${esc(ps.slice().sort((a, b) => b.weight - a.weight)[0].name)}">${esc(ps.slice().sort((a, b) => b.weight - a.weight)[0].name.replace(/\s*\(ADR\)/i, ''))}</div><div class="s">${(ps.slice().sort((a, b) => b.weight - a.weight)[0].weight || 0).toFixed(0)} % of depot</div></div><div class="kp"><div class="l">Live quotes</div><div class="v">${dp.n_live}/${dp.n_total}</div><div class="s" title="${esc(dp.n_live < dp.n_total ? 'rest: export price' : 'all positions live')}${ps.some(x => x.quote_t) ? ' · latest trade ' + hms(Math.max(...ps.map(x => +x.quote_t || 0)) * (Math.max(...ps.map(x => +x.quote_t || 0)) < 1e12 ? 1000 : 1)) : ''}">${d.mode === 'demo' ? 'demo' : 'updated ' + hms(S.liveAt || d.generated)}</div></div></div><div class="tbl fill" style="overflow:auto">${head}${rows}<div id="wlRows">${watchRows()}</div></div><div class="xs dim" style="margin-top:.4rem">Click a position for its history · click column titles to sort · header opens total securities</div>`, { cls: '', style: 'flex:7;min-height:0', heat: heatSec });
   }
   function pAlloc(d) {
     if (!d.depot) return '';
@@ -310,32 +349,46 @@
     const raw = { axis: f.months, kind: 'flow', stacked: true, series: catFilter ? [{ n: catFilter, c: colOf(catFilter), v: f.cats[catFilter], type: 'bar', flow: true }] : ser };
     if (catFilter) raw.stacked = false; return raw;
   }
+  /* v1.29: amounts as an average per day / week / month; one shared setting for the Spending and Cash flow boxes */
+  const RU = { day: 30.4375, week: 4.34524, month: 1 };                 // units in one month
+  const rate = () => { if (!RU[S.rate]) S.rate = 'month'; return S.rate; };
+  const rdiv = months => Math.max(1, months) * RU[rate()];              // window total / this = average per unit
+  const rlab = () => rate();
+  const rseg = id => `<span class="fseg" id="${id}">${[['day', 'D'], ['week', 'W'], ['month', 'M']].map(([k, t]) => `<button data-rate="${k}" class="${rate() === k ? 'on' : ''}" title="average per ${k}">${t}</button>`).join('')}</span>`;
+  function setRate(v) { S.rate = RU[v] ? v : 'month'; redrawSpendBox(); redrawFlowBox(); }
   function pSpend(d) {
     const f = d.flows; if (!f) return panel('pSpend', 'Spending', '', '<div class="empty">No bookings.</div>');
     const all = Object.keys(f.cats), base = all.filter(k => k !== 'Sonstiges'), colOf = k => k === 'Sonstiges' ? GREY : (base.indexOf(k) < 8 ? PAL[base.indexOf(k)] : '#8aa0ad');
     const l12 = all.map(k => [k, f.cats[k].slice(-13, -1).reduce((a, b) => a + b, 0)]).sort((a, b) => ((a[0] === 'Sonstiges') - (b[0] === 'Sonstiges')) || b[1] - a[1]), t12 = l12.reduce((s, x) => s + x[1], 0) || 1;
-    POST.push(() => { TS($('#spc'), prep(spendRaw(d), S)); $$('#pSpend .tr[data-c]').forEach(r => r.onclick = () => openCat(r.dataset.c)); $('#spt').onclick = () => openSpend(); const cf = $('#catFix'); if (cf) cf.onclick = e => { e.stopPropagation(); WVC.open(); }; });
-    const rows = l12.slice(0, 12).map(([k, v]) => `<div class="tr" style="grid-template-columns:.7rem 1fr auto 3.2rem;padding:.2rem .1rem;font-size:max(var(--minfs,0px),0.768rem)" data-c="${esc(k)}"><span style="background:${colOf(k)};height:.6rem"></span><span>${esc(k)}</span><span class="r wh">${A(v)}</span><span class="r dim">${(v / t12 * 100).toFixed(0)} %</span></div>`).join('');
-    return panel('pSpend', '<span id="spt" style="cursor:pointer">Spending by category <b>//</b> monthly' + spanTag(f.months.length) + '</span>', (d.mode === 'demo' || !window.WVC ? '' : '<button id="catFix" title="Correct wrong categories and save rules">✎ Fix categories</button>') + (d.mode === 'demo' ? badge('demo', 'Demo') : srcBadge('gls', d)), `<div style="display:grid;grid-template-columns:1.7fr 1fr;gap:1rem;flex:1;min-height:0"><div class="fill" id="spc" style="min-height:8rem"></div><div style="display:flex;flex-direction:column;min-height:0"><div class="xs dim" style="letter-spacing:.12em;margin-bottom:.3rem">LAST 12 MONTHS · ${A(t12)}</div><div style="overflow:auto">${rows}</div></div></div>`, { style: 'flex:3', heat: heatSpend });
+    const spm = Math.min(12, Math.max(1, f.months.length - 1)), spd = rdiv(spm);   // v1.29: months behind the list, and the divisor for D/W/M
+    POST.push(() => { TS($('#spc'), prep(spendRaw(d), S)); $$('#pSpend .tr[data-c]').forEach(r => r.onclick = () => openCat(r.dataset.c)); $('#spt').onclick = () => openSpend(); const cf = $('#catFix'); if (cf) cf.onclick = e => { e.stopPropagation(); WVC.open(); }; const gb = $('#grocBtn'); if (gb) gb.onclick = e => { e.stopPropagation(); WVG.open(); }; $$('#spRate button').forEach(b => b.onclick = e => { e.stopPropagation(); setRate(b.dataset.rate); }); });
+    const rows = l12.slice(0, 12).map(([k, v]) => `<div class="tr" style="grid-template-columns:.7rem 1fr auto 3.2rem;padding:.2rem .1rem;font-size:max(var(--minfs,0px),0.768rem)" data-c="${esc(k)}"><span style="background:${colOf(k)};height:.6rem"></span><span>${esc(k)}</span><span class="r wh">${A(v / spd)}</span><span class="r dim">${(v / t12 * 100).toFixed(0)} %</span></div>`).join('');
+    return panel('pSpend', '<span id="spt" style="cursor:pointer">Spending by category <b>//</b> monthly' + spanTag(f.months.length) + '</span>', (d.mode === 'demo' || !window.WVG ? '' : '<button id="grocBtn" title="Groceries: Knuspr orders by category, time, product">🛒 Groceries</button>') + (d.mode === 'demo' || !window.WVC ? '' : '<button id="catFix" title="Correct wrong categories and save rules">✎ Fix categories</button>') + (d.mode === 'demo' ? badge('demo', 'Demo') : srcBadge('gls', d)), `<div style="display:grid;grid-template-columns:1.7fr 1fr;gap:1rem;flex:1;min-height:0"><div class="fill" id="spc" style="min-height:8rem"></div><div style="display:flex;flex-direction:column;min-height:0"><div class="xs dim" style="letter-spacing:.12em;margin-bottom:.3rem;display:flex;align-items:center;gap:.4rem;justify-content:space-between" title="average per ${rlab()}, from the last ${spm} month${spm === 1 ? '' : 's'}"><span>Ø / ${rlab().toUpperCase()} · ${A(t12 / spd)}</span>${rseg('spRate')}</div><div style="overflow:auto">${rows}</div></div></div>`, { style: 'flex:3', heat: heatSpend });
   }
   function flowRaw(d, from, to) { const f = d.flows, cut = a => a.slice(from || 0, to || undefined); return { axis: cut(f.months), kind: 'flow', series: [{ n: 'Income', c: '#6fbf95', v: cut(f.income), type: 'bar', flow: true }, { n: 'Expenses', c: '#d98338', v: cut(f.expense), type: 'bar', flow: true }, { n: 'Saved (income − expenses)', c: '#22aecf', v: cut(f.savings), type: 'line', flow: true, fixed: true }] }; }
   function pFlow(d) {
     const f = d.flows; if (!f) return '';
     const F = window.WVF, st = F ? F.state() : { per: 'year' }, n = f.months.length, sp = F ? F.span(f, st) : [Math.max(0, n - 13), n - 1], i0 = sp[0], i1 = sp[1], nm = Math.max(1, i1 - i0), one = st.per === 'month';
-    const sm = a => a.slice(i0, i1).reduce((x, y) => x + y, 0), inc = sm(f.income), ex = sm(f.expense), sr = inc ? (inc - ex) / inc * 100 : 0, oo = sm(f.oneoff_in) - sm(f.oneoff_out), ie = d.income_est, div = one ? 1 : nm;
+    const sm = a => a.slice(i0, i1).reduce((x, y) => x + y, 0), inc = sm(f.income), ex = sm(f.expense), sr = inc ? (inc - ex) / inc * 100 : 0, oo = sm(f.oneoff_in) - sm(f.oneoff_out), ie = d.income_est, div = rdiv(nm);
     const sub = one ? (F ? F.label(f, st) : 'last month') : st.per === 'all' ? 'all-time average' : (st.yr && st.yr !== 'last12' ? st.yr + ' average' : '12 m avg');
     const from = st.per === 'all' ? 0 : one ? Math.max(0, n - 6) : i0, to = st.per === 'year' && st.yr && st.yr !== 'last12' ? i1 : n;
     POST.push(() => {
       TS($('#flc'), prep(flowRaw(d, from, to), S)); $$('#pFlow .kp').forEach(k => k.onclick = () => k.dataset.k === 'inc' ? openIncome() : openFlow());
       $$('#flSeg button').forEach(b => b.onclick = e => { e.stopPropagation(); st.per = b.dataset.per; redrawFlowBox(); });
       const fp = $('#flPop'); if (fp) fp.onclick = e => { e.stopPropagation(); F.open(); };
+      $$('#flRate button').forEach(b => b.onclick = e => { e.stopPropagation(); setRate(b.dataset.rate); });
     });
-    const bd = '<div style="display:flex;gap:.4rem;align-items:center">' + (F ? F.seg('flSeg') + '<button id="flPop" title="Interactive cash-flow chart: income, categories and payees">◈ Flow</button>' : '') + (d.mode === 'demo' ? badge('demo', 'Demo') : srcBadge('gls', d)) + '</div>';
-    return panel('pFlow', 'Cash flow <b>//</b> monthly' + spanTag(f.months.length), bd, `<div class="kpis" style="margin-bottom:.4rem"><div class="kp"><div class="l">Income${one ? '' : ' / month'}</div><div class="v">${A(inc / div)}</div><div class="s">${sub} · incl. one-offs</div></div><div class="kp"><div class="l">Expenses${one ? '' : ' / month'}</div><div class="v">${A(ex / div)}</div><div class="s">${sub}</div></div><div class="kp"><div class="l">Savings rate</div><div class="v ${cl(sr)}">${pct(sr, 0)}</div><div class="s">${one ? sub : nm + ' months'}</div></div><div class="kp" data-k="inc"><div class="l">Portfolio income / mo</div><div class="v">${ie ? A(ie.monthly) : '–'}</div><div class="s">${ie ? '≈ ' + eur(ie.yearly) + ' / yr · estimate' : 'n/a'}</div></div><div class="kp"><div class="l">One-offs (in totals)</div><div class="v ${cl(oo)}">${A(oo)}</div><div class="s">net of items ≥ ${nf0.format(f.oneoff_threshold)} €</div></div></div><div class="fill nb" id="flc" style="min-height:7rem"></div>`, { style: 'flex:2.4' });
+    const bd = '<div style="display:flex;gap:.4rem;align-items:center">' + (F ? F.seg('flSeg') : '') + rseg('flRate') + (F ? '<button id="flPop" title="Interactive cash-flow chart: income, categories and payees">◈ Flow</button>' : '') + (d.mode === 'demo' ? badge('demo', 'Demo') : srcBadge('gls', d)) + '</div>';
+    return panel('pFlow', 'Cash flow <b>//</b> monthly' + spanTag(f.months.length), bd, `<div class="kpis" style="margin-bottom:.4rem"><div class="kp"><div class="l">Income / ${rlab()}</div><div class="v">${A(inc / div)}</div><div class="s">${sub} · incl. one-offs</div></div><div class="kp"><div class="l">Expenses / ${rlab()}</div><div class="v">${A(ex / div)}</div><div class="s">${sub}</div></div><div class="kp"><div class="l">Savings rate</div><div class="v ${cl(sr)}">${pct(sr, 0)}</div><div class="s">${one ? sub : nm + ' months'}</div></div><div class="kp" data-k="inc"><div class="l">Portfolio income / mo</div><div class="v">${ie ? A(ie.monthly) : '–'}</div><div class="s">${ie ? '≈ ' + eur(ie.yearly) + ' / yr · estimate' : 'n/a'}</div></div><div class="kp"><div class="l">One-offs (in totals)</div><div class="v ${cl(oo)}">${A(oo)}</div><div class="s">net of items ≥ ${nf0.format(f.oneoff_threshold)} €</div></div></div><div class="fill nb" id="flc" style="min-height:7rem"></div>`, { style: 'flex:2.4' });
   }
   /* redraw only the Cash flow box (the period buttons use it; no full re-render) */
   function redrawFlowBox() {
     const el = $('#pFlow'); if (!el || !S.D) return; POST.length = 0; const t = document.createElement('div'); t.innerHTML = pFlow(S.D);
+    el.replaceWith(t.firstElementChild); frameAll(); POST.forEach(f => { try { f(); } catch (e) { console.error(e); } }); POST.length = 0;
+  }
+  /* v1.29: redraw only the Spending by category box (the D/W/M buttons use it) */
+  function redrawSpendBox() {
+    const el = $('#pSpend'); if (!el || !S.D) return; POST.length = 0; const t = document.createElement('div'); t.innerHTML = pSpend(S.D);
     el.replaceWith(t.firstElementChild); frameAll(); POST.forEach(f => { try { f(); } catch (e) { console.error(e); } }); POST.length = 0;
   }
   function pTop(d) {
@@ -373,12 +426,14 @@
     if (inc && ex > inc * 0.95) { const c = f && Object.entries(f.cats).map(([k, a]) => [k, a.slice(-13, -1).reduce((x, y) => x + y, 0)]).filter(x => x[0] !== 'Sonstiges').sort((a, b) => b[1] - a[1]).slice(0, 2); T.push({ l: 'warn', t: 'Spending is close to or above income', x: `Average spending ${eur(ex)} vs income ${eur(inc)} per month (12 m).` + (c ? ` Largest categories: ${c.map(x => x[0] + ' ' + eur(x[1])).join(', ')}.` : '') }); }
     if (ni.secGain > 5000) T.push({ l: 'idea', t: `Unrealised gains ${eur(ni.secGain)}: use the 1.000 € allowance`, x: `Estimated tax if sold today ≈ ${eur(ni.tax)}. Realising up to the yearly Sparer-Pauschbetrag (1.000 €) tax-free, and a Freistellungsauftrag at your bank, avoid paying tax unnecessarily. Check with a tax advisor.` });
     if (d.loan && d.loan.balance > 0) T.push({ l: 'info', t: `Family loan: ${eur(d.loan.balance)} left, paid off ${mlabLong(d.loan.payoff)}`, x: `Assumed 0 % interest, so repaying early earns nothing; an agreement on the exact terms (interest, early repayment) keeps it clean for both sides.` });
-    const wp = d.examplefund && d.examplefund.personal; if (wp && wp.unfunded > 0) T.push({ l: 'info', t: `${eur(wp.unfunded)} still to be called by Example Fund`, x: 'Capital calls arrive on short notice; keep this amount liquid so you never have to sell investments at a bad time.' });
+    const wp = d.examplefund && d.examplefund.personal; if (wp && wp.unfunded > 0) T.push({ l: 'info', t: `${eur(wp.unfunded)} still to be called by ${esc(fundTitle(d))}`, x: 'Capital calls arrive on short notice; keep this amount liquid so you never have to sell investments at a bad time.' });
     const ie = d.income_est; if (ie && dp) T.push({ l: 'info', t: `Portfolio income ≈ ${eur(ie.monthly)} / month (est.)`, x: `Dividends and interest add up to about ${eur(ie.yearly)} a year, i.e. ${(ie.yearly / tg * 100).toFixed(2).replace('.', ',')} % of gross assets: your portfolio is growth-oriented. Dividend or bond holdings would raise it.` });
     const sub = f && f.cats['Subscriptions & Digital']; if (sub) { const a = sub.slice(-13, -1).reduce((x, y) => x + y, 0); if (a > 1200) T.push({ l: 'idea', t: `Subscriptions & digital: ${eur(a)} / year`, x: 'Worth a yearly review of recurring subscriptions and contracts (phone, internet, insurance) for cheaper tariffs.' }); }
     if (!T.length) T.push({ l: 'info', t: 'No suggestions right now', x: 'Everything is within the usual guard rails.' });
     return T;
   }
+  /* next expected wiwin payout (from config wiwin.terms.schedule), shown under the row */
+  function nextPay(wi) { const sc = wi && wi.terms && wi.terms.schedule; if (!sc) return ''; const t = new Date().toISOString().slice(0, 10), n = sc.find(r => r.date >= t); return n ? ' · next payout ' + n.date.split('-').reverse().join('.') + ' ≈ ' + eur(n.amt) : ''; }
   function mlabLong(m) { return m ? MON[+m.slice(5, 7) - 1] + ' ' + m.slice(0, 4) : '–'; }
   /* euro amounts in suggestion texts are asset values: wrap them so the privacy blur covers them */
   const blurAmts = h => h.replace(/(\d{1,3}(?:\.\d{3})+|\d+(?:,\d+)?(?:\s[kM])?)(\s?€)/g, '<span class="amt">$1$2</span>');
@@ -433,12 +488,11 @@
     const w = d.examplefund; if (!w) return '';
     const p = w.personal, f = w.fund, lg = window.WF_LOGOS || {}, strip = w.companies.slice().sort((a, b) => b.fair_value - a.fair_value).slice(0, 12).map(c => `<span class="lgw2" data-slug="${esc(c.slug)}" title="${esc(c.name)} · click for details" style="cursor:pointer;width:3.2rem;height:2.2rem;border:1px solid rgba(60,190,235,.3);background:#0b141b;display:inline-block;overflow:hidden">${lg[c.slug] ? `<img src="${lg[c.slug]}" style="width:100%;height:100%;object-fit:cover">` : ''}</span>`).join('');
     const srt = w.companies.slice().sort((a, b) => b.fair_value - a.fair_value), mxv = srt[0].fair_value;
-    const top8 = srt.slice(0, 8).map(c => `<div class="tr" data-slug="${esc(c.slug)}" title="Click for company details" style="grid-template-columns:2.6rem minmax(0,1.2fr) 1.6fr 3rem;cursor:pointer"><span style="width:2.4rem;height:1.5rem;border:1px solid rgba(60,190,235,.3);background:#0b141b;overflow:hidden;display:block">${lg[c.slug] ? `<img src="${lg[c.slug]}" style="width:100%;height:100%;object-fit:cover">` : ''}</span><span>${esc(c.name)}<small class="dim"> · ${esc(c.industry)}</small></span><span><span class="bar"><i style="width:${c.fair_value / mxv * 100}%;background:${c.moic >= 1 ? '#8fe6b8' : '#ff6b6b'}"></i></span></span><span class="r ${c.moic >= 1 ? 'pos' : 'neg'}">${c.moic.toFixed(2).replace('.', ',')}x</span></div>`).join('');
+    const top8 = srt.map(c => `<div class="tr" data-slug="${esc(c.slug)}" title="Click for company details" style="grid-template-columns:2.6rem minmax(0,1.3fr) .8fr 3rem;cursor:pointer;min-height:2.6rem;align-items:center"><span style="width:2.4rem;height:1.5rem;border:1px solid rgba(60,190,235,.3);background:#0b141b;overflow:hidden;display:block">${lg[c.slug] ? `<img src="${lg[c.slug]}" style="width:100%;height:100%;object-fit:cover">` : ''}</span><span>${esc(c.name)}<small class="dim"> · ${esc(c.industry)}</small></span><span><span class="bar"><i style="width:${c.fair_value / mxv * 100}%;background:${c.moic >= 1 ? '#8fe6b8' : '#ff6b6b'}"></i></span></span><span class="r ${c.moic >= 1 ? 'pos' : 'neg'}">${c.moic.toFixed(2).replace('.', ',')}x</span></div>`).join('');
     POST.push(() => { $('#wfOpen').onclick = e => { e.stopPropagation(); openWF(); }; $('#pWF').onclick = openWF; $$('#pWF [data-slug]').forEach(x => x.onclick = e => { e.stopPropagation(); openCompany(x.dataset.slug); }); });
     return panel('pWF', `${logo('examplefund', 'Example Fund')}&nbsp; ${esc(fundTitle(d))} <b>//</b> your capital account`, srcBadge('examplefund', d),
       `<div class="kpis" style="margin-bottom:.5rem"><div class="kp"><div class="l">Your NAV</div><div class="v">${A(p.nav)}</div><div class="s">${pct((p.nav / p.paid_in - 1) * 100)} vs paid-in</div></div><div class="kp"><div class="l">Paid in / commitment</div><div class="v">${A(p.paid_in)}</div><div class="s">of ${eur(p.commitment)} · ${(p.paid_in / p.commitment * 100).toFixed(0)} %</div></div><div class="kp"><div class="l">Unfunded</div><div class="v">${A(p.unfunded)}</div><div class="s">still to be called</div></div><div class="kp"><div class="l">Fund TVPI</div><div class="v">${f.tvpi.toFixed(2).replace('.', ',')}x</div><div class="s">net IRR ${pct(f.net_irr)}</div></div></div>
-      <div class="xs dim" style="letter-spacing:.14em;margin-bottom:.3rem">TOP HOLDINGS BY FAIR VALUE · MOIC</div><div class="tbl" style="flex:1;min-height:0;overflow:hidden">${top8}</div>
-      <div style="display:flex;gap:.3rem;flex-wrap:wrap;margin:.5rem 0">${strip}</div>
+      <div class="xs dim" style="letter-spacing:.14em;margin-bottom:.3rem">ALL HOLDINGS BY FAIR VALUE · MOIC</div><div class="tbl" style="flex:1;min-height:0;overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;column-gap:1rem;align-content:start;margin-bottom:.5rem">${top8}</div>
       <div style="display:flex;justify-content:space-between;align-items:center"><span class="xs dim">${w.companies.length} portfolio companies · top ${Math.round(w.companies.slice().sort((a, b) => b.fair_value - a.fair_value).slice(0, 3).reduce((s, c) => s + c.fair_value, 0) / f.fair_value_portfolio * 100)} % of fair value in 3 names</span><button id="wfOpen">Open portfolio (${w.companies.length}) ▸</button></div>`, { cls: 'click', style: 'flex:3.4', heat: heatWF });
   }
   function wfRaw(d) { const f = d.examplefund.fund, p = d.examplefund.personal; return { axis: ['2025-12', '2026-03', '2026-06'], kind: 'stock', series: [{ n: 'Your NAV (est. Dec = n/a)', c: '#ff9a3d', v: [null, p.nav_prev_quarter || null, p.nav], type: 'bar', fixed: true }] }; }
@@ -462,7 +516,7 @@
     if (!wi) return L ? panel('pAlt', 'Loans', '', `<div class="tr" id="altL" style="grid-template-columns:1fr auto"><span class="nm"><span class="t">Loan from ${esc(L.lender)}<small>${eur(L.monthly)} / month · paid off ${mlabLong(L.payoff)}</small></span></span><span class="r neg">−${A(L.balance)}</span></div>`, { style: 'flex:1.1' }) + (POST.push(() => { const l = $('#altL'); if (l) l.onclick = openLoan; }), '') : '';
     POST.push(() => { $('#altW').onclick = () => window.WVA ? WVA.companyModal({ name: wi.issuer, wiwin: wi, web: wi.web || '', blurb: 'Crowd investment, counted as private equity. No live price exists for stakes like this, so it is carried at cost (' + (wi.note || 'at cost') + '). Tell me the current value or repayments to update config.json.' }) : infoModal('wiwin investment', `<div class="stats"><div>Issuer<b>${esc(wi.issuer)}</b></div><div>Platform<b>${esc(wi.platform)}</b></div><div>Invested<b>${A(wi.invested)}</b></div><div>Valuation<b>${esc(wi.note || 'at cost')}</b></div></div><p class="dim sm">wiwin counts as <b>Private equity</b> in the asset classes (together with Example Fund). No live price exists for crowd-investing stakes, so it is carried at cost. Tell me the current value or repayments to update it in config.json.</p>`, srcBadge('wiwin', d)); const l = $('#altL'); if (l) l.onclick = openLoan; });
     const loan = L ? `<div class="tr" id="altL" style="grid-template-columns:2.4rem 1fr auto;margin-top:.2rem"><span>${iconLg('loan')}</span><span class="nm"><span class="t">Loan from ${esc(L.lender)}<small>${eur(L.monthly)} / month · paid off ${mlabLong(L.payoff)}</small><span class="bar" style="display:block;margin-top:.2rem"><i style="width:${L.repaid / L.principal * 100}%;background:#6fbf95"></i></span></span></span><span class="r neg">−${A(L.balance)}</span></div>` : '';
-    return panel('pAlt', 'Alternatives <b>//</b> private holdings & loans', srcBadge('wiwin', d), `<div class="tr" id="altW" style="grid-template-columns:2.4rem 1fr auto"><span>${logo('wiwin', 'wiwin', true)}</span><span class="nm"><span class="t">${esc(wi.issuer)}<small>${esc(wi.platform)} · ${esc(wi.note || 'at cost')} · counts as private equity</small></span></span><span class="r wh">${A(wi.invested)}</span></div>${loan}<div class="xs dim" style="margin-top:.4rem">Private equity total (Example Fund + wiwin): <b class="wh">${A(classValues(d)['Private equity'])}</b></div>`, { style: 'flex:1.1' });
+    return panel('pAlt', 'Alternatives <b>//</b> private holdings & loans', srcBadge('wiwin', d), `<div class="tr" id="altW" style="grid-template-columns:2.4rem 1fr auto"><span>${logo('wiwin', 'wiwin', true)}</span><span class="nm"><span class="t">${esc(wi.issuer)}<small>${esc(wi.platform)} · ${esc(wi.note || 'at cost')} · counts as private equity${nextPay(wi)}</small></span></span><span class="r wh">${A(wi.invested)}</span></div>${loan}<div class="xs dim" style="margin-top:.4rem">Private equity total (Example Fund + wiwin): <b class="wh">${A(classValues(d)['Private equity'])}</b></div>`, { style: 'flex:1.1' });
   }
   /* v1.20: what you typed in under Setup (house, loans, funds, other investments, balances). Shown only when something was typed in. */
   function pTyped(d) {
@@ -482,20 +536,23 @@
   function acctRaw(d, kinds) { const b = d.balances; return { axis: b.months, kind: 'stock', series: kinds.map(([k, n, c]) => ({ n, c, v: b[k], type: 'line' })) }; }
   function pSrc(d) {
     const t = d.totals, ap = d.apartment, rows = [];   /* ap / wiwin / examplefund are absent when their module is off */
-    const add = (key, label, sub, val, bd, fn) => rows.push(`<div class="tr" style="grid-template-columns:2.2rem minmax(0,1fr) auto auto" data-i="${rows.length}"><span>${key.startsWith('~') ? iconLg(key.slice(1)) : logo(key, label)}</span><span class="nm"><span class="t">${esc(label)}<small>${esc(sub)}</small></span></span><span class="r wh">${val == null ? '–' : A(val)}</span><span>${bd}</span></div>`);
+    const labs = [], add = (key, label, sub, val, bd, fn) => (labs.push(label), rows.push(`<div class="tr" style="grid-template-columns:2.2rem minmax(0,1fr) auto auto" data-i="${rows.length}"><span>${key.startsWith('~') ? iconLg(key.slice(1)) : logo(key, label)}</span><span class="nm"><span class="t">${esc(label)}<small>${esc(sub)}</small></span></span><span class="r wh">${val == null ? '–' : A(val)}</span><span>${bd}</span></div>`));
     const fns = [];
     add('gls', 'GLS Giro', 'checking account', t.giro, srcBadge('gls', d)); fns.push(() => openAcct('Giro', [['giro', 'Giro', '#19d3ff']]));
     add('gls', 'GLS Tagesgeld', 'savings account', t.tages, srcBadge('gls', d)); fns.push(() => openAcct('Tagesgeld', [['tages', 'Tagesgeld', '#8fe6b8']]));
     add('gls', 'GLS Credit card', 'balance', t.card, srcBadge('gls', d)); fns.push(() => openAcct('Credit card', [['card', 'Card balance', '#ff6b6b']]));
     add('gls', 'GLS Bank shares', 'cooperative shares', t.shares, srcBadge('gls', d)); fns.push(() => openAcct('GLS shares', [['shares', 'Shares', '#ffd24a']]));
-    add('paypal', 'PayPal', t.paypal == null ? 'balance unknown (export too old)' : 'balance', t.paypal, srcBadge('paypal', d)); fns.push(() => infoModal('PayPal', '<p class="dim">PayPal only provides balances through the activity export (Download.CSV). Download a new one into the PayPal folder to include it.</p>'));
+    add('paypal', 'PayPal', t.paypal == null ? 'balance unknown (export too old)' : 'balance', t.paypal, srcBadge('paypal', d)); fns.push(() => openPayPal());
     add('gls', 'GLS Depot', (d.depot ? d.depot.positions.length : 0) + ' positions', d.depot && d.depot.total, srcBadge('depot', d)); fns.push(() => openSec());
     add('coinbase', 'Coinbase', (d.crypto ? d.crypto.holdings.length : 0) + ' assets', d.crypto && d.crypto.total_eur, srcBadge('coinbase', d)); fns.push(() => openCrypto());
     if ('examplefund' in d) { add('examplefund', fundTitle(d), 'venture fund', d.examplefund && d.examplefund.personal.nav, srcBadge('examplefund', d)); fns.push(() => openWF()); }
     if (d.wiwin) { add('wiwin', 'wiwin · ' + d.wiwin.issuer, 'crowd investment', d.wiwin.invested, srcBadge('wiwin', d)); fns.push(() => $('#altW') && $('#altW').click()); }
     if (ap) { add('~house', ap.address.split(',')[0], ap.sqm + ' sqm · benchmark value', ap.value_used, badge(d.mode === 'demo' ? 'demo' : 'model', d.mode === 'demo' ? 'Demo' : 'Model')); fns.push(() => openApt()); }
     POST.push(() => $$('#pSrc .tr[data-i]').forEach(r => r.onclick = () => fns[+r.dataset.i]()));
-    return panel('pSrc', 'Accounts & sources', d.mode === 'demo' ? badge('demo', 'Demo') : badge('mix', 'Live + static'), `<div class="tbl" style="overflow:auto">${rows.join('')}</div>`, { style: 'flex:3.6' });
+    /* rows of the same bank stay together (GLS Giro ... GLS Depot, then PayPal): groups in order of first appearance, original order inside a group */
+    const grp = labs.map(l => String(l).split(' ')[0].toLowerCase()), first = {}; grp.forEach((g, k) => { if (!(g in first)) first[g] = k; });
+    const ord = rows.map((_, k) => k).sort((x, y) => first[grp[x]] - first[grp[y]] || x - y);
+    return panel('pSrc', 'Accounts & sources', d.mode === 'demo' ? badge('demo', 'Demo') : badge('mix', 'Live + static'), `<div class="tbl" style="overflow:auto">${ord.map(n => rows[n]).join('')}</div>`, { style: 'flex:3.6' });
   }
   function pRecent(d) {
     const rc = (d.gls && d.gls.recent || []).slice(0, 10).map(r => `<div class="tr rb" data-n="${esc(r.n)}" title="Click for the booking history with ${esc(r.n)}" style="grid-template-columns:3.2rem 1.7rem minmax(0,1fr) auto;cursor:pointer;padding:.22rem .2rem"><span class="dim xs">${dshort(r.d)}</span>${logo(r.lg || 'none:' + r.n, r.n)}<span class="nm"><span class="t">${esc(r.n)}<small>${esc(r.c)}</small></span></span><span class="r ${r.v < 0 ? '' : 'pos'}">${A(r.v)}</span></div>`).join('') || '<div class="empty">No bookings.</div>';
@@ -649,7 +706,7 @@
     return CLS.map(k => one(k, k, A(v[k]), (v[k] / CLS.reduce((s, x) => s + v[x], 0) * 100).toFixed(1).replace('.', ',') + ' % of total')).join('') + one('flow', 'Spend / month', A(ex), '12 m average') + one('sr', 'Savings rate', pct(sr, 0), '12 months', cl(sr)) + one('run', 'Cash runway', run ? run.toFixed(0) + ' mo' : '–', 'cash ÷ monthly spend');
   }
   /* ================================================== drill-downs */
-  function openNW() { openTS({ heat: heatClasses, title: 'Gross assets development', stacked: true, badge: S.D.mode === 'demo' ? badge('demo', 'Demo') : badge('model', 'Back-cast + actual'), make: () => grossRaw(S.D), extra: () => `<p class="xs dim">Real numbers only exist where your files do: cash since the first GLS export; securities and crypto are today\'s holdings valued at historical prices; real estate follows the local benchmark; private equity starts with the first quarterly report in the data. New real snapshots are saved on every refresh.</p>` }); }
+  function openNW() { openTS({ heat: heatClasses, years: true, title: 'Gross assets development', stacked: true, badge: S.D.mode === 'demo' ? badge('demo', 'Demo') : badge('model', 'Back-cast + actual'), make: () => grossRaw(S.D), extra: () => `<p class="xs dim">Real numbers only exist where your files do: cash since the first GLS export; securities and crypto are today\'s holdings valued at historical prices; real estate follows the local benchmark; private equity starts with the first quarterly report in the data. New real snapshots are saved on every refresh.</p>` }); }
   function openClass(k) {
     const d = S.D; if (k === 'flow') return openFlow(); if (k === 'sr') return openFlow(); if (k === 'run') return openAcct('Cash', [['giro', 'Giro', '#19d3ff'], ['tages', 'Tagesgeld', '#8fe6b8'], ['card', 'Card', '#ff6b6b']]);
     if (k === 'Securities') return openSec(); if (k === 'Crypto') return openCrypto(); if (k === 'Real estate') return openApt(); if (k === 'Private equity') return openWF();
@@ -704,7 +761,8 @@
   function posChart(el, o) {
     const W = el.clientWidth, H = el.clientHeight; if (W < 80 || H < 60) return;
     const L = 58, R = 16, T = 16, B = 26, iw = W - L - R, ih = H - T - B; let pts = o.pts;
-    if (o.range !== 'MAX') { const cut = Date.now() - ({ '1Y': 1, '3Y': 3, '5Y': 5 }[o.range] || 5) * 365.25 * 864e5; pts = pts.filter(q => q[0] >= cut); }
+    if (o.range === 'SINCE') pts = pts.filter(q => q[0] >= (o.from || 0));            /* v1.27: from your first purchase to today */
+    else if (o.range !== 'MAX') { const cut = Date.now() - ({ '1Y': 1, '3Y': 3, '5Y': 5 }[o.range] || 5) * 365.25 * 864e5; pts = pts.filter(q => q[0] >= cut); }
     if (pts.length < 2) { el.innerHTML = '<div class="empty" style="padding:1rem">No price history for this range.</div>'; return; }
     const t0 = pts[0][0], t1 = pts[pts.length - 1][0], tr = o.trades.filter(x => x.t >= t0 - 7 * 864e5 && x.t <= t1 + 7 * 864e5);
     let lo = Infinity, hi = -Infinity; pts.forEach(q => { lo = Math.min(lo, q[1]); hi = Math.max(hi, q[1]); }); tr.forEach(x => { lo = Math.min(lo, x.price); hi = Math.max(hi, x.price); }); if (o.avg) { lo = Math.min(lo, o.avg); hi = Math.max(hi, o.avg); }
@@ -733,19 +791,24 @@
   function openPos(w, coin) {
     const d = S.D, p = coin || d.depot.positions.find(x => x.wkn === w); if (!p) return;
     modalShell(coin ? 'Crypto position' : 'Position', coin ? badge(coin.status === 'ok' ? 'live' : 'static', 'Coinbase') : p.live ? badge('live', 'Live ' + (p.sym || '')) : badge(d.mode === 'demo' ? 'demo' : 'static', d.mode === 'demo' ? 'Demo' : 'Static · export price'));
-    const now = p.price_live || p.price || 0, st = { splits: [], pts: null, range: '5Y', research: null };
-    const startMs = p.first_buy ? Date.parse(p.first_buy.slice(0, 10) + 'T00:00:00Z') - 3 * 864e5 : 0, fromBuy = a => a.filter(q => q[0] >= startMs);
-    const monthly = () => fromBuy((p.hist || []).map((v, i) => v == null ? null : [Date.UTC(+d.axis[i].slice(0, 4), +d.axis[i].slice(5, 7) - 1, 15), v]).filter(Boolean));
+    /* v1.27: "Since purchase" is its own range button. It is the default when a purchase date is known, so the chart looks as before,
+       but 1Y / 3Y / 5Y / MAX now show the whole price history instead of being cut off at the first purchase. */
+    /* v1.28: securities get no first_buy from the server (only coins do), so fall back to the earliest dated buy of this position */
+    const fb = p.first_buy || ((p.trades || []).filter(t => t.side === 'buy' && t.d).map(t => t.d).sort()[0] || null);
+    const now = p.price_live || p.price || 0, st = { splits: [], pts: null, range: fb ? 'SINCE' : '5Y', research: null };
+    const startMs = fb ? Date.parse(fb.slice(0, 10) + 'T00:00:00Z') - 3 * 864e5 : 0;
+    const rlab = r => r === 'SINCE' ? 'Since purchase' : r;
+    const monthly = () => (p.hist || []).map((v, i) => v == null ? null : [Date.UTC(+d.axis[i].slice(0, 4), +d.axis[i].slice(5, 7) - 1, 15), v]).filter(Boolean);
     $('#mbody').innerHTML = `<div class="pp ppos"><div class="hdr">${logo(p.isCoin ? 'c:' + p.wkn : p.wkn, p.name, true)}<div><h2>${esc(p.name)}</h2><small>${esc(p.wkn)}${p.sym ? ' · ' + esc(p.sym) : ''} · ${esc(p.cls)} · ${esc(p.theme)}</small></div></div>
       <div class="stats"><div>Quantity<b>${qf(p, p.qty || 0)}</b></div><div>Price now<b>${nf2.format(now)} €</b></div><div>Value<b>${A(p.value)}</b></div><div>Cost basis<b>${A(p.cost)}</b></div><div>P/L<b class="${cl(p.gain)}">${A(p.gain)} (${pct(p.gain_pct)})</b></div><div>Weight<b>${(p.weight || 0).toFixed(1).replace('.', ',')} %</b></div></div>
       <div class="top2"><div><div class="stats" style="margin-bottom:.4rem"><div>Chart</div><div class="leg" id="ppLeg" style="margin-top:.2rem"><span style="cursor:default"><i style="background:#19d3ff"></i>price (EUR)</span><span style="cursor:default"><i style="background:#5fe3a0"></i>▲ your buys</span><span style="cursor:default"><i style="background:#ff6b6b"></i>▼ your sells</span><span style="cursor:default"><i style="background:#ff9a3d"></i>Ø cost</span></div><div id="ppRange" style="display:flex;gap:.3rem;margin-left:auto"></div></div><div class="chartbox" id="ppChart"></div></div>
       <div class="side"><div class="card" id="ppScore"><h4>Meta-score · buy / sell</h4><div class="ld"><span class="spinner"></span>researching online …</div></div><div class="card news" id="ppNews"><h4>Latest company news</h4><div class="ld"><span class="spinner"></span>looking up headlines …</div></div></div></div>
       <div class="card" id="ppCalc"></div></div>`;
     frameAll($('#modal'));
-    const draw = () => { const tr = tradesAdj(p, d, st.splits), lc = lotCalc(p, tr), pts = st.pts ? fromBuy(st.pts) : monthly(); const avg = p.qty && p.cost != null ? p.cost / p.qty : null;
-      const mo = pts.length ? (Date.now() - pts[0][0]) / 2629800000 : 0, av = rangesFor(mo), rb = $('#ppRange'); if (!av.includes(st.range)) st.range = 'MAX';
-      if (rb && rb.dataset.av !== av.join()) { rb.dataset.av = av.join(); rb.innerHTML = av.map(r => `<button data-r="${r}" class="${r === st.range ? 'on' : ''}">${r}</button>`).join(''); $$('#ppRange button').forEach(b => b.onclick = () => { st.range = b.dataset.r; $$('#ppRange button').forEach(x => x.classList.toggle('on', x === b)); draw(); }); }
-      posChart($('#ppChart'), { pts, trades: tr, avg, range: st.range }); const lcs = lc; const cd = $('#ppCalc'); for (const mn of [0, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 1e4]) { cd.innerHTML = calcHTML(p, d, tr, lcs, now, { min: mn }); if (cd.scrollHeight <= cd.clientHeight + 1 || lcs.open.length < 4) break; } };
+    const draw = () => { const tr = tradesAdj(p, d, st.splits), lc = lotCalc(p, tr), pts = st.pts || monthly(); const avg = p.qty && p.cost != null ? p.cost / p.qty : null;
+      const mo = pts.length ? (Date.now() - pts[0][0]) / 2629800000 : 0, av = (startMs ? ['SINCE'] : []).concat(rangesFor(mo)), rb = $('#ppRange'); if (!av.includes(st.range)) st.range = 'MAX';
+      if (rb && rb.dataset.av !== av.join()) { rb.dataset.av = av.join(); rb.innerHTML = av.map(r => `<button data-r="${r}" class="${r === st.range ? 'on' : ''}"${r === 'SINCE' ? ' title="From your first purchase (' + dfull(fb && fb.slice(0, 10)) + ') to today"' : ''}>${rlab(r)}</button>`).join(''); $$('#ppRange button').forEach(b => b.onclick = () => { st.range = b.dataset.r; $$('#ppRange button').forEach(x => x.classList.toggle('on', x === b)); draw(); }); }
+      posChart($('#ppChart'), { pts, trades: tr, avg, range: st.range, from: startMs }); const lcs = lc; const cd = $('#ppCalc'); for (const mn of [0, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 1e4]) { cd.innerHTML = calcHTML(p, d, tr, lcs, now, { min: mn }); if (cd.scrollHeight <= cd.clientHeight + 1 || lcs.open.length < 4) break; } };
     const rO = new ResizeObserver(() => { if ($('#ppChart')) draw(); }); rO.observe($('#ppChart'));
     $$('#ppRange button').forEach(b => b.onclick = () => { st.range = b.dataset.r; $$('#ppRange button').forEach(x => x.classList.toggle('on', x === b)); draw(); });
     draw();
@@ -757,6 +820,37 @@
         st.pts = r.prices.map(q => [q[0] * 1000, q[1]]); st.splits = r.splits || []; }
       draw(); scoreHTML(p, r, d); newsHTML(r);
     }).catch(e => { if (e.locked) { toDemo(); lockModal(); return; } if (!$('#ppScore')) return; $('#ppScore').innerHTML = '<h4>Meta-score · buy / sell</h4><div class="ld or">Could not reach the research source: ' + esc(e.message) + '</div>'; $('#ppNews').innerHTML = '<h4>Latest company news</h4><div class="ld or">Not available right now.</div>'; });
+  }
+  /* ===== v1.27: pop-up of a WATCHED share (not owned): same logo + header, price chart, meta-score and news as a position,
+     without the parts that need holdings (quantity, cost, P/L, purchase maths). ===== */
+  function openWatch(sym) {
+    const w = (S.watch || []).find(x => x.sym === sym); if (!w) return;
+    const d = S.D, p = { wkn: 'w:' + w.sym, sym: w.sym, name: w.name, weight: 0, isCoin: false };
+    modalShell('Watched share', w.price_eur == null ? badge('static', 'No quote') : badge('live', 'Live ' + w.sym));
+    const st = { pts: null, range: '5Y' };
+    $('#mbody').innerHTML = `<div class="pp ppos"><div class="hdr">${logoFor(w.name)}<div><h2>${esc(w.name)}</h2><small>${esc(w.sym)} · watched · not owned</small></div></div>
+      <div class="stats"><div>Price now<b>${w.price_eur == null ? '–' : nf2.format(w.price_eur) + ' €'}</b></div><div>Change today<b class="${cl(w.chg_pct)}">${pct(w.chg_pct)}</b></div><div>Currency<b>${esc(w.cur || '–')}</b></div><div>Last trade<b>${w.t ? esc(ago(w.t)) : '–'}</b></div></div>
+      <div class="top2"><div><div class="stats" style="margin-bottom:.4rem"><div>Chart</div><div class="leg" id="ppLeg" style="margin-top:.2rem"><span style="cursor:default"><i style="background:#19d3ff"></i>price (EUR)</span></div><div id="ppRange" style="display:flex;gap:.3rem;margin-left:auto"></div></div><div class="chartbox" id="ppChart"></div></div>
+      <div class="side"><div class="card" id="ppScore"><h4>Meta-score · buy / sell</h4><div class="ld"><span class="spinner"></span>researching online …</div></div><div class="card news" id="ppNews"><h4>Latest company news</h4><div class="ld"><span class="spinner"></span>looking up headlines …</div></div></div></div></div>`;
+    frameAll($('#modal'));
+    const draw = () => {
+      const el = $('#ppChart'); if (!el) return; const pts = st.pts || [];
+      if (!pts.length) { el.innerHTML = '<div class="empty" style="padding:1rem">No price history for this share.</div>'; return; }
+      const mo = (Date.now() - pts[0][0]) / 2629800000, av = rangesFor(mo), rb = $('#ppRange'); if (!av.includes(st.range)) st.range = 'MAX';
+      if (rb && rb.dataset.av !== av.join()) { rb.dataset.av = av.join(); rb.innerHTML = av.map(r => `<button data-r="${r}" class="${r === st.range ? 'on' : ''}">${r}</button>`).join(''); $$('#ppRange button').forEach(b => b.onclick = () => { st.range = b.dataset.r; $$('#ppRange button').forEach(x => x.classList.toggle('on', x === b)); draw(); }); }
+      posChart(el, { pts, trades: [], avg: null, range: st.range });
+    };
+    const rO = new ResizeObserver(() => { if ($('#ppChart')) draw(); }); rO.observe($('#ppChart'));
+    draw();
+    if (!server) { $('#ppChart').innerHTML = '<div class="empty" style="padding:1rem">Live research needs the local server: open WealthView from its desktop icon.</div>'; $('#ppScore').innerHTML = '<h4>Meta-score · buy / sell</h4><div class="ld">Needs the local server (desktop icon).</div>'; $('#ppNews').innerHTML = '<h4>Latest company news</h4><div class="ld">Needs the local server (desktop icon).</div>'; return; }
+    api('/api/research?sym=' + encodeURIComponent(w.sym) + '&name=' + encodeURIComponent(w.name || '') + '&wkn=').then(r => {
+      if (!$('#ppChart')) return;
+      if (r.ok && r.prices && r.prices.length) st.pts = r.prices.map(q => [q[0] * 1000, q[1]]);
+      draw(); scoreHTML(p, r, d); newsHTML(r);
+    }).catch(e => {
+      if (e.locked) { toDemo(); lockModal(); return; } if (!$('#ppScore')) return;
+      $('#ppScore').innerHTML = '<h4>Meta-score · buy / sell</h4><div class="ld or">Could not reach the research source: ' + esc(e.message) + '</div>'; $('#ppNews').innerHTML = '<h4>Latest company news</h4><div class="ld or">Not available right now.</div>';
+    });
   }
   function scoreHTML(p, r, d) {
     const el = $('#ppScore'); if (!el) return; const s = r.score;
@@ -886,6 +980,18 @@
     const d = S.D, ap = d.apartment; if (!ap) return; openTS({ title: `${ap.address} · value over the years`, badge: d.mode === 'demo' ? badge('demo', 'Demo') : badge('model', 'Model · benchmark'), type: 'area', make: () => aptRaw(d),
       extra: () => `<div class="stats"><div>Bought<b>${A(ap.purchase_price)}</b></div><div>Estimate now<b>${A(ap.value_used)}</b></div><div>Increase<b class="${cl(ap.gain)}">${A(ap.gain)} (${pct(ap.gain_pct)})</b></div></div><p class="xs dim">How this is estimated: your purchase price is moved along the yearly average apartment price per sqm of the benchmark (${esc(ap.benchmark_name)}), interpolated month by month. ${ap.benchmark ? 'Yearly benchmark values: ' + Object.entries(ap.benchmark).map(([y, v]) => y + ': ' + nf0.format(v) + ' €/sqm').join(' · ') + '. ' : ''}It is a market-level estimate, not a valuation of your flat: condition, floor, view and building matter. <a href="${esc(safeUrl(ap.benchmark_source))}" target="_blank" rel="noopener">Source ↗</a></p>` });
   }
+  async function openPayPal() {      /* every stored PayPal transaction, newest first, with a search box */
+    const body = infoModal('PayPal · transactions', '<p class="dim">Loading…</p>', srcBadge('paypal', S.D));
+    let j; try { j = await api('/api/paypal'); } catch (e) { body.innerHTML = '<p class="dim">The PayPal transactions could not be loaded: ' + esc(String(e && e.message || e)) + '</p>'; return; }
+    const rows = (j && j.rows) || [], m2 = v => v == null ? '' : v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    if (!rows.length) { body.innerHTML = '<p class="dim">No PayPal transactions stored yet. Download an activity export (Download.CSV) into the PayPal folder and press Refresh data.</p>'; return; }
+    body.innerHTML = `<div class="xs dim">${rows.length}${j.total > rows.length ? ' newest of ' + j.total : ''} transactions · ${esc(rows[rows.length - 1][0])} to ${esc(rows[0][0])}</div><input id="ppq" class="spi" placeholder="Search name, type, status…" style="width:100%;margin:.4rem 0"><div id="ppl" class="tbl" style="max-height:65vh;overflow:auto"></div>`;
+    const draw = () => {
+      const q = $('#ppq').value.trim().toLowerCase(), f = q ? rows.filter(r => ((r[2] || '') + ' ' + (r[3] || '') + ' ' + (r[4] || '')).toLowerCase().includes(q)) : rows;
+      $('#ppl').innerHTML = f.slice(0, 400).map(r => `<div class="tr" style="grid-template-columns:5.5rem minmax(0,1fr) auto auto"><span class="dim">${esc(r[0])}</span><span class="nm"><span class="t">${esc(r[2] || '–')}<small>${esc([r[3], r[4]].filter(Boolean).join(' · '))}</small></span></span><span class="r ${r[6] < 0 ? 'neg' : 'pos'}">${m2(r[6])}</span><span class="r dim">${m2(r[9])}</span></div>`).join('') + (f.length > 400 ? `<div class="xs dim">… ${f.length - 400} more, narrow the search</div>` : '');
+    };
+    $('#ppq').oninput = draw; draw();
+  }
   function openAcct(title, defs) { const d = S.D; openTS({ title: title + ' · balance history', badge: srcBadge('gls', d), type: 'line', make: () => acctRaw(d, defs) }); }
   function openFlow() { const d = S.D; openTS({ title: 'Income, expenses and savings', badge: d.mode === 'demo' ? badge('demo', 'Demo') : srcBadge('gls', d), type: 'bar', make: () => flowRaw(d), extra: () => `<p class="xs dim">Internal transfers, credit-card settlements and securities purchases are not counted as spending. Items of ${nf0.format(d.flows.oneoff_threshold)} € or more are treated as one-offs and shown separately.</p>` }); }
   function openSpend() { const d = S.D; openTS({ heat: heatSpend, title: 'Spending by category · monthly', stacked: true, type: 'bar', badge: d.mode === 'demo' ? badge('demo', 'Demo') : srcBadge('gls', d), make: () => spendRaw(d), extra: () => `<p class="xs dim">Categories come from WealthView's own rules (keywords in payee and purpose). Click a category on the dashboard for its merchants. Add your own rules in config.json → category_rules.</p>` }); }
@@ -894,7 +1000,7 @@
   function openWF() {
     const d = S.D, w = d.examplefund, lg = window.WF_LOGOS || {}, inds = [...new Set(w.companies.map(c => c.industry))].sort(); let ind = 'ALL', sort = 'fair_value';
     const html = () => { const cs = w.companies.filter(c => ind === 'ALL' || c.industry === ind).sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : (b[sort] - a[sort])); return cs.map(c => `<div class="cc" data-slug="${esc(c.slug)}" title="Click for details"><div class="top"><div class="lgw">${lg[c.slug] ? `<img src="${lg[c.slug]}" alt="">` : ''}</div><div><h5>${esc(c.name)}</h5><span class="chip">${esc(c.industry)}</span><span class="chip" style="border-color:rgba(255,154,61,.5);color:var(--or)">${esc(c.sector)}</span></div></div><p class="bl">${esc(c.blurb)}</p><div class="ft"><span>${esc(c.country)} · since ${esc(c.since)} · <b class="${c.moic >= 1 ? 'pos' : 'neg'}">${c.moic.toFixed(2).replace('.', ',')}x</b> · your look-through <b class="wh amt">${eur(c.look_through)}</b></span><a class="lk" href="${esc(c.web || w.portfolio_url)}" target="_blank" rel="noopener">${c.web ? 'Website' : 'Example Fund'} ↗</a></div></div>`).join(''); };
-    const b = infoModal(`${esc(fundTitle(d))} · all ${w.companies.length} portfolio companies`, `<div class="stats"><div>Fund NAV<b>${kfmt(w.fund.nav)} €</b></div><div>Fund TVPI<b>${w.fund.tvpi.toFixed(2).replace('.', ',')}x</b></div><div>Net IRR<b class="${cl(w.fund.net_irr)}">${pct(w.fund.net_irr)}</b></div><div>Portfolio MOIC<b>${w.fund.portfolio_moic.toFixed(2).replace('.', ',')}x</b></div><div>Your share<b>${(w.personal.ownership_pct || 0).toFixed(4).replace('.', ',')} %</b></div><div>Report<b style="font-size:0.96rem">${esc(d.mode === 'demo' ? 'Q2 2026 (EXAMPLE numbers)' : 'Q' + w.report_q + ' ' + w.report_year)}</b></div></div><div class="tools" style="padding:0" id="wft"></div><div class="wfg" id="wfg"></div><p class="xs dim">Descriptions are short summaries from public sources; "look-through" = your share of the fund times the fair value of each company (fund-level numbers, not what you could sell). Where no company website was verified, the link goes to the Example Fund portfolio page.</p>`, srcBadge('examplefund', d));
+    const b = infoModal(`${esc(fundTitle(d))} · all ${w.companies.length} portfolio companies`, `<div class="stats"><div>Fund NAV<b>${kfmt(w.fund.nav)} €</b></div><div>Fund TVPI<b>${w.fund.tvpi.toFixed(2).replace('.', ',')}x</b></div><div>Net IRR<b class="${cl(w.fund.net_irr)}">${pct(w.fund.net_irr)}</b></div><div>Portfolio MOIC<b>${w.fund.portfolio_moic.toFixed(2).replace('.', ',')}x</b></div><div>Your share<b>${(w.personal.ownership_pct || 0).toFixed(4).replace('.', ',')} %</b></div><div>Report<b style="font-size:0.96rem">${esc(d.mode === 'demo' ? 'Q2 2026 (EXAMPLE numbers)' : 'Q' + w.report_q + ' ' + w.report_year)}</b></div></div><div class="tools" style="padding:0" id="wft"></div><div class="wfg" id="wfg"></div><p class="xs dim">Descriptions are short summaries from public sources; "look-through" = your share of the fund times the fair value of each company (fund-level numbers, not what you could sell). Where no company website was verified, the link goes to the ${esc(fundTitle(d))} portfolio page.</p>`, srcBadge('examplefund', d));
     const bar = () => { $('#wft').innerHTML = ['ALL', ...inds].map(i => `<button data-i="${esc(i)}" class="${ind === i ? 'on' : ''}">${esc(i)}</button>`).join('') + '<span class="sep"></span>' + [['fair_value', 'Size'], ['moic', 'MOIC'], ['name', 'A-Z']].map(([k, l]) => `<button data-s="${k}" class="${sort === k ? 'on' : ''}">Sort: ${l}</button>`).join(''); $$('#wft button').forEach(x => x.onclick = () => { if (x.dataset.i) ind = x.dataset.i; if (x.dataset.s) sort = x.dataset.s; bar(); paint(); }); };
     const paint = () => { $('#wfg').innerHTML = html(); fitWfg(); $$('#wfg .cc').forEach(x => x.onclick = e => { if (e.target.closest('a')) return; openCompany(x.dataset.slug); }); };
     bar(); paint();
@@ -905,7 +1011,7 @@
   const WFG_ROWS = 4;
   function wfgLayout(n, W) {     /* pure: -> { cols, rows, cw, ch, mode, gap } */
     const cols = n <= 3 ? Math.max(1, n) : Math.ceil(n / WFG_ROWS), rows = Math.ceil(n / cols), gap = 10, cw = Math.max(40, (W - gap * (cols - 1)) / cols);
-    const mode = cw >= 330 ? 'full' : cw >= 170 ? 'mid' : 'sm', ch = mode === 'full' ? 150 : mode === 'mid' ? Math.max(96, cw * .62) : Math.max(78, cw * .8);
+    const mode = cw >= 330 ? 'full' : cw >= 170 ? 'mid' : 'sm', ch = mode === 'full' ? 180 : mode === 'mid' ? Math.max(96, cw * .62) : Math.max(78, cw * .8);
     return { cols, rows, cw, ch, mode, gap };
   }
   function fitWfg() {
@@ -1046,13 +1152,13 @@
     $('#bRefresh').onclick = () => { if (S.mode === 'real') loadReal(true); };
     $('#bSetup').onclick = () => { if (S.mode === 'real') openSetup(); };
     document.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; if (e.key === 'p' || e.key === 'P') document.body.classList.toggle('priv'); if ((e.key === 'r' || e.key === 'R') && S.mode === 'real' && !e.ctrlKey) loadReal(true); if (e.key === 'f' || e.key === 'F') $('#bFs').click(); });
-    setInterval(quickUpdate, 300000);
+    setInterval(quickUpdate, 300000); setInterval(() => loadWatch(), 60000);
     /* frames and charts follow via ResizeObserver; v1.22: when the screen changes its column layout (a tablet turned, a window made narrow),
        the boxes are placed again, because two-column screens stack the side columns differently */
     const tierKey = () => { const w = window.innerWidth, h = window.innerHeight; return w / h > 2.2 ? 'u' : w <= 900 ? 'c' : w <= 1900 ? 'l' : 'd'; };
     let TIER = tierKey(), TIER_T = null;
     window.addEventListener('resize', () => { clearTimeout(TIER_T); TIER_T = setTimeout(() => { const k = tierKey(); if (k !== TIER) { TIER = k; if (S.D && !$('#modal').classList.contains('on')) { try { renderAll(); } catch (e) { } } } }, 250); });
   }
-  window.WV = { wfgLayout, pSrc, pAlt, S, panel, infoModal, modalShell, TS, A, eur, pct, cl, esc, badge, srcBadge, logo, renderAll, POST, $, $$, kfmt, openMerchant, openBookings, openTS, api, server, PAL, GREY, MON, redrawFlowBox, closeModal, reloadData, loadReal, lockInput, lockModal };
+  window.WV = { wfgLayout, pSrc, pAlt, S, panel, infoModal, modalShell, TS, A, eur, pct, cl, esc, badge, srcBadge, logo, renderAll, POST, $, $$, kfmt, openMerchant, openBookings, openTS, api, server, PAL, GREY, MON, redrawFlowBox, closeModal, reloadData, loadReal, lockInput, lockModal, loadWatch };
   window.addEventListener('DOMContentLoaded', init);
 })();

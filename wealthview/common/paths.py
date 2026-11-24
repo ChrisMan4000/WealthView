@@ -45,3 +45,8 @@ def migrate_data_dir(base: Path | None = None) -> list[str]:
         os.replace(old, backup / name)
         moved.append(name)
     return moved
+
+
+def norm_path(p: "str | Path") -> str:
+    """A path in one comparable form (absolute, case-folded on Windows)."""
+    return os.path.normcase(os.path.abspath(str(p)))

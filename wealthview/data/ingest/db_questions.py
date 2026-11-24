@@ -2,10 +2,11 @@
 A question is asked once per file layout (the column names). The answer is remembered in `formats`, so every file with the same columns is then read
 the same way without asking again. ask() does not commit (the importer's transaction does); answer() commits by itself. Standard library only."""
 from __future__ import annotations
-import datetime as dt, json, sqlite3
+import json, sqlite3
 from typing import Any
 
 from .db_schema import transaction
+from ...common.timeutil import now_iso as _now
 
 FILE_KIND = "file_kind"
 CHOICES: list[dict[str, str]] = [
@@ -17,10 +18,6 @@ CHOICES: list[dict[str, str]] = [
     {"value": "skip", "label": "Skip this file"},
 ]
 WAITING = "waiting for your answer"
-
-
-def _now() -> str:
-    return dt.datetime.now().isoformat(timespec="seconds")
 
 
 def format_for(conn: sqlite3.Connection, fingerprint: str) -> str | None:

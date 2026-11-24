@@ -67,7 +67,7 @@ def update_status(today: dt.date, latest: dict[str, Any], extra: dict[str, Remin
             due = d < cutoff
         else:
             due = (today - d).days > EXAMPLEFUND_MAX_AGE
-        item = ReminderItem(key=fam.key, source=fam.name, what_to_download=fam.what, where=fam.where, folder_key=fam.folder_key,
+        item = ReminderItem(key=fam.key, source=((cfg or {}).get("fund_title") or fam.name) if fam.key == "examplefund" else fam.name, what_to_download=fam.what, where=fam.where, folder_key=fam.folder_key,
                     folder=folder_path(cfg, fam.folder_key, fam.sub), pattern=fam.pattern, schedule=fam.schedule,
                     latest=d.isoformat() if d else None, due=due, days_old=(today - d).days if d else None)
         if extra and extra.get(fam.key):

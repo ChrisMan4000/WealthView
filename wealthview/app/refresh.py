@@ -7,7 +7,7 @@ This module only runs the stages in order (full refresh: main, light refresh: qu
 Run by hand:   python refresh.py          (the dashboard's REFRESH button runs it too)
 """
 from __future__ import annotations
-import json, sqlite3, sys, traceback
+import ast, inspect, json, sqlite3, sys, textwrap, traceback
 from typing import Any, Callable, NamedTuple
 from ..common import config
 from ..common.bootstrap import bootstrap
@@ -28,6 +28,7 @@ from ..data.ingest import db_queries, db_schema, exchanges, loaders
 from ..data.ingest import sources as reminder_sources
 from ..data.ingest.logo_fetch import fetch_logos
 from ..data.ingest.paypal import load_paypal_preferring_db, paypal_best_from_db
+from ..data.ingest import quotes
 from ..data.ingest.quotes import live_prices
 from ..analysis import insights, quick, unusual
 from . import fund_tools, refresh_stages
@@ -206,7 +207,7 @@ def stage_models(r: Run) -> None:
 def stage_assets(r: Run) -> None:
     """The house, loans, funds and other investments typed in (v1.20) plus typed bank balances; None when there are none."""
     conn = r.conn
-    r.assets = run_stage(r.ctx, "refresh.stage_assets", lambda: typed_assets.build_assets_block(conn, today(), fund_reader=fund_tools.make_fund_reader(), isin_price=fund_tools.isin_price) if conn else None, None,
+    r.assets = run_stage(r.ctx, "refresh.stage_assets", lambda: typed_assets.build_assets_block(conn, today(), fund_reader=fund_tools.make_fund_reader(), isin_price=quotes.price_by_isin) if conn else None, None,
                          status="database", msg="your typed assets could not be read: ", errors=DB_ERRORS)
 
 
@@ -313,9 +314,9 @@ STAGES: list[Stage] = [
     Stage("dashboard alerts", stage_alerts, ("sync_rep", "rows", "depot", "gls", "flows", "giro", "cov", "flow_kpis"), ("alerts",)),
     Stage("source status lines", stage_sources, ("depot",), ("sources",)),
     Stage("assemble data.json", stage_assemble, ("totals", "nw", "loan_series", "gross", "net", "gls", "flows", "balances", "depot", "crypto",
-                                                 "examplefund", "assets", "paypal", "apartment", "loan", "income", "sources", "alerts", "runway", "logos"), ("data",)),
-    Stage("totals, analytics, insights", stage_finish, ("conn", "sync_rep", "rows", "flows", "cov", "data"), ("finished",)),
-    Stage("write data.json", stage_write, ("data", "flows", "finished", "trades_saved"), ("written",)),
+                                                 "examplefund", "assets", "paypal", "apartment", "loan", "income", "sources", "alerts", "runway", "logos", "conn"), ("data",)),
+    Stage("totals, analytics, insights", stage_finish, ("conn", "sync_rep", "rows", "flows", "cov", "data", "depot"), ("finished", "sources")),
+    Stage("write data.json", stage_write, ("data", "flows", "finished", "trades_saved", "conn"), ("written",)),
 ]
 
 
@@ -327,6 +328,29 @@ def check_stage_order(stages: list[Stage], start: tuple[str, ...] = ()) -> None:
         if missing:
             raise ValueError(f"stage '{st.name}' needs {', '.join(missing)} before it runs")
         have.update(st.provides)
+
+
+def check_stage_declarations(stages: list[Stage]) -> None:
+    """Raises ValueError when a stage function reads a Run value (r.x) missing from its `needs` or sets one missing from its `provides`.
+    Read from the function source; skipped for a stage whose source is not available. Names that are not Run values (flow_kpis, ...) are ordering markers."""
+    values = set(Run.__annotations__) - {"ctx", "profile"}
+    for st in stages:
+        try:
+            tree = ast.parse(textwrap.dedent(inspect.getsource(st.run)))
+        except (OSError, TypeError, SyntaxError):
+            continue
+        loads: set[str] = set()
+        stores: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "r" and node.attr in values:
+                (stores if isinstance(node.ctx, ast.Store) else loads).add(node.attr)
+        missing_needs, missing_provides = sorted(loads - stores - set(st.needs)), sorted(stores - set(st.provides))
+        if missing_needs or missing_provides:
+            raise ValueError(f"stage '{st.name}': reads {missing_needs} not in needs, sets {missing_provides} not in provides")
+
+
+check_stage_order(STAGES)
+check_stage_declarations(STAGES)
 
 
 def main() -> None:
@@ -359,11 +383,12 @@ def quick_main() -> None:
     data["version"] = version()
     data["quick"] = True
 
+    examplefund_on = load_profile().modules.get("examplefund", True)
     def snapshot_and_reminders() -> None:
         qconn = db_schema.connect(data_path(db_schema.DB_NAME))
         try:
             refresh_stages.record_snapshot(ctx, qconn, data)
-            data["reminders"] = build_reminders(ctx, qconn, data.get("examplefund")) or data.get("reminders")
+            data["reminders"] = build_reminders(ctx, qconn, data.get("examplefund"), examplefund_on) or data.get("reminders")
         finally:
             qconn.close()
     run_stage(ctx, "refresh.quick_main", snapshot_and_reminders, None, errors=(sqlite3.Error, OSError))

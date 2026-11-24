@@ -14,6 +14,12 @@ _ISO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DOTTED = re.compile(r"^(\d{1,2})\.(\d{1,2})\.(\d{4})$")
 
 
+class UnknownAccount(KeyError):
+    """The account id is not (or no longer) there. A KeyError, so callers that catch KeyError keep working."""
+    def __str__(self) -> str:
+        return f"unknown account: {self.args[0] if self.args else '?'}"
+
+
 def _number(v: Any, what: str, *, minimum: float | None = None, maximum: float | None = None, required: bool = True) -> float | None:
     """A number typed in German (1.234,56) or English (1,234.56) style. ValueError with a plain sentence when it is not one."""
     if v is None or (isinstance(v, str) and not v.strip()):
@@ -160,10 +166,10 @@ def add_asset(conn: sqlite3.Connection, kind: str, raw: dict[str, Any]) -> int:
 
 
 def update_asset(conn: sqlite3.Connection, account_id: int, raw: dict[str, Any]) -> None:
-    """Replace the fields of a typed asset (the name too). KeyError for an unknown account."""
+    """Replace the fields of a typed asset (the name too). UnknownAccount (a KeyError) for an unknown account."""
     row = conn.execute("SELECT a.kind, a.source_id FROM accounts a JOIN manual_assets m ON m.account_id=a.id WHERE a.id=?", (account_id,)).fetchone()
     if row is None:
-        raise KeyError(account_id)
+        raise UnknownAccount(account_id)
     fields = validate(row[0], raw)
     with transaction(conn):
         conn.execute("UPDATE manual_assets SET fields=? WHERE account_id=?", (json.dumps(fields), account_id))
@@ -172,10 +178,10 @@ def update_asset(conn: sqlite3.Connection, account_id: int, raw: dict[str, Any])
 
 
 def delete_asset(conn: sqlite3.Connection, account_id: int) -> None:
-    """Remove a typed asset with its account, its source and its stored values."""
+    """Remove a typed asset with its account, its source and its stored values. UnknownAccount (a KeyError) for an unknown account."""
     row = conn.execute("SELECT a.source_id FROM accounts a JOIN manual_assets m ON m.account_id=a.id WHERE a.id=?", (account_id,)).fetchone()
     if row is None:
-        return
+        raise UnknownAccount(account_id)
     with transaction(conn):
         conn.execute("DELETE FROM valuations WHERE account_id=?", (account_id,))
         conn.execute("DELETE FROM manual_assets WHERE account_id=?", (account_id,))
@@ -198,9 +204,11 @@ def list_assets(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 def set_typed_balance(conn: sqlite3.Connection, account_id: int, value: float, day: str) -> None:
-    """The balance of a bank account whose files carry no balance column, as the person typed it (the newest one counts)."""
+    """The balance of a bank account whose files carry no balance column, as the person typed it (the newest one counts). UnknownAccount (a KeyError) for an unknown account."""
     v = _number(value, "the balance")
     d = _date(day, "the date")
+    if conn.execute("SELECT 1 FROM accounts WHERE id=?", (account_id,)).fetchone() is None:
+        raise UnknownAccount(account_id)
     with transaction(conn):
         conn.execute("INSERT OR REPLACE INTO valuations(account_id, date, value, basis) VALUES(?,?,?,'typed')", (account_id, d, v))
 

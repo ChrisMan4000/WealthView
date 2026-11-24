@@ -29,7 +29,7 @@ def _d(s: str) -> dt.date:
 
 
 def _eur(x: float) -> str:
-    return ("%.2f" % x).rstrip("0").rstrip(".")
+    return f"{x:.2f}".rstrip("0").rstrip(".")
 
 
 def _check_spike(c: dict[str, Any], hist: list[SpendingRow], cat_hist: list[SpendingRow], amt: float) -> tuple[str, str] | None:
@@ -43,7 +43,7 @@ def _check_spike(c: dict[str, Any], hist: list[SpendingRow], cat_hist: list[Spen
         med = median(amts)
         mad = median([abs(a - med) for a in amts])
         if amt > max(3 * med, med + c["spike_mad"] * mad):
-            return "spike", "%.1fx the usual %s EUR for %s" % (amt / med, _eur(med), label)
+            return "spike", f"{amt / med:.1f}x the usual {_eur(med)} EUR for {label}"
     return None
 
 
@@ -62,7 +62,7 @@ def _check_duplicate(c: dict[str, Any], hist: list[SpendingRow], amt: float, day
             if gap > c["dup_days"]:
                 break
             if abs(abs(h["amount"]) - amt) < 0.005:
-                return "duplicate", "same amount %d day(s) after %s" % (gap, str(h["date"])[:10])
+                return "duplicate", f"same amount {gap} day(s) after {str(h['date'])[:10]}"
     return None
 
 
@@ -75,7 +75,7 @@ def _check_price_rise(c: dict[str, Any], hist: list[SpendingRow], r: SpendingRow
         if all(25 <= g <= 35 for g in gaps) and min(prev) > 0 and max(prev) / min(prev) <= 1.02:
             rise = (amt / prev[-1] - 1) * 100
             if rise >= c["rise_pct"]:
-                return "price_rise", "price up %.1f %% (%s -> %s EUR)" % (rise, _eur(prev[-1]), _eur(amt))
+                return "price_rise", f"price up {rise:.1f} % ({_eur(prev[-1])} -> {_eur(amt)} EUR)"
     return None
 
 

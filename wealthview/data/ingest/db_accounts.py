@@ -3,10 +3,11 @@ A source is one thing the user set up (a bank, an investment, a crypto place) wi
 An account is what is found inside a source (current account, card, depot, wallet). Bookings, PayPal rows and depot positions point to an account.
 Writes do not commit: callers wrap them in db_schema.transaction(). Standard library only."""
 from __future__ import annotations
-import datetime as dt, json, sqlite3
+import json, sqlite3
 from typing import Any
 
 from ...common.types.accounts import AccountRow, SourceRow
+from ...common.timeutil import now_iso as _now
 from .db_schema import KINDS, SECTIONS, SOURCE_TYPES
 
 NO_IDENT = "-"          # stored when an account has no IBAN / id, so UNIQUE(source_id, ident) also covers "unknown account"
@@ -20,10 +21,6 @@ _KIND_QUERIES = (            # fixed queries: table names are never built from o
     "SELECT DISTINCT a.kind FROM accounts a JOIN paypal_tx t ON t.account_id = a.id",
     "SELECT DISTINCT a.kind FROM accounts a JOIN depot_positions t ON t.account_id = a.id",
 )
-
-
-def _now() -> str:
-    return dt.datetime.now().isoformat(timespec="seconds")
 
 
 def add_source(conn: sqlite3.Connection, name: str, section: str, source_type: str, *, folder: str | None = None, connector: str | None = None,

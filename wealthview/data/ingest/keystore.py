@@ -4,7 +4,7 @@ the browser: the setup screen only learns whether a place has keys. Standard lib
 from __future__ import annotations
 import json, sys
 
-from . import fints_sync
+from . import credstore
 
 PREFIX = "WealthView-API-"
 MAX_BLOB = 2560                      # bytes Windows accepts for one credential
@@ -30,13 +30,13 @@ def save(source_id: int, values: dict[str, str]) -> None:
         return
     if sys.platform != "win32":
         raise ValueError("API keys can only be stored on Windows (Credential Manager)")
-    if not fints_sync.cred_write(blob, user="api", target=_target(source_id)):
+    if not credstore.cred_write(blob, user="api", target=_target(source_id)):
         raise ValueError("Windows could not store the keys (Credential Manager)")
 
 
 def load(source_id: int) -> dict[str, str]:
     """The stored keys of one place; {} when there are none."""
-    blob = _memory.get(_target(source_id)) if _memory is not None else fints_sync.cred_read(_target(source_id))
+    blob = _memory.get(_target(source_id)) if _memory is not None else credstore.cred_read(_target(source_id))
     if not blob:
         return {}
     try:
@@ -57,5 +57,4 @@ def delete(source_id: int) -> None:
         return
     if sys.platform != "win32":
         return
-    import ctypes
-    ctypes.windll.advapi32.CredDeleteW(_target(source_id), 1, 0)        # type: ignore[attr-defined]
+    credstore.cred_delete(_target(source_id))

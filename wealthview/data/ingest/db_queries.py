@@ -42,6 +42,13 @@ def unusual_seen_add(conn: sqlite3.Connection, keys: object) -> list[str]:
     return merged
 
 
+def paypal_activity(conn: sqlite3.Connection, limit: int = 5000) -> tuple[int, list[list[Any]]]:
+    """(row count, newest `limit` PayPal rows as [date, time, name, type, status, currency, gross, fee, net, balance]) - read only."""
+    total = conn.execute("SELECT COUNT(*) FROM paypal_tx").fetchone()[0]
+    rows = [list(r) for r in conn.execute("SELECT date,time,name,type,status,currency,gross,fee,net,balance FROM paypal_tx ORDER BY date DESC, time DESC, id DESC LIMIT ?", (int(limit),))]
+    return total, rows
+
+
 # Fixed row-count queries (table names are never taken from outside this module).
 _COUNT_QUERIES = {
     "bookings": "SELECT COUNT(*) FROM bookings",

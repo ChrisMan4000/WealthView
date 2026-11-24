@@ -2,15 +2,11 @@
 The classifier (finance/categories.py) uses them before its built-in rules. Standard library only."""
 from __future__ import annotations
 import sqlite3
-import datetime as dt
 from ...common.types.rules import RuleRow
+from ...common.timeutil import now_iso as _now
 
 MAX_NAME = 120
 MAX_CAT = 40
-
-
-def _now() -> str:
-    return dt.datetime.now().isoformat(timespec="seconds")
 
 
 def load(conn: sqlite3.Connection) -> tuple[list[tuple[str, str, str]], dict[str, str]]:

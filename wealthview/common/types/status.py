@@ -59,3 +59,12 @@ class SyncReport(_SyncReportRequired, total=False):
     skipped: bool      # refresh_stages.open_db sets it when the folders had not changed and no sync ran
     new_crypto: int    # crypto transactions read by the automatic reader (v1.20)
     questions: int     # files waiting for a plain answer after this sync (v1.20)
+
+
+class BankSyncReport(TypedDict):
+    """what fints_sync.sync_bank returns: status off (nothing to read) / ok / warn, rows seen and added, plain-language warnings and the last message"""
+    status: State
+    added: int
+    rows: int
+    warnings: list[str]
+    message: str

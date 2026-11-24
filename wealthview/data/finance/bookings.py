@@ -12,7 +12,6 @@ from collections import defaultdict
 
 from ...common.types.bookings import ACCOUNT_KINDS, BalanceHistory, BookingRow, FlowModel, MonthlySeries, NameValue, Spender, SpendingRow
 from .ownaccounts import OwnAccounts, cash_flow_events
-from . import categories
 from .categories import SONSTIGES, classify
 from . import gls_block
 from ..ingest import gls_parse
@@ -71,9 +70,6 @@ def merchant_and_domain(r: BookingRow) -> tuple[str, str]:
     """(display name, domain) for a booking: match on its label first, then on the counterparty."""
     raw = gls_parse.booking_label(r)
     return match_merchant(raw) or match_merchant(r["counterparty"]) or (raw, "")
-
-
-categories.merchant_resolver = lambda r: merchant_and_domain(r)[0]      # lets your merchant rules (categories.set_user_rules) find the display name
 
 
 def _merchant_sum() -> dict[str, Any]:

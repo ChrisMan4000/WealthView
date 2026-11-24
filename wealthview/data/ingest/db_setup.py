@@ -51,7 +51,7 @@ def state(conn: sqlite3.Connection) -> dict[str, Any]:
     sources = [dict(id=s["id"], name=s["name"], section=s["section"], source_type=s["source_type"], folder=s["folder"], connector=s["connector"],
                     active=s["active"], subfolders=s["options"].get("subfolders", True) is not False, accounts=counts.get(s["id"], 0),
                     has_keys=s["source_type"] == "api" and keystore.has(s["id"]))
-               for s in db_accounts.list_sources(conn, active_only=False) if not s["options"].get("asset")]
+               for s in db_accounts.list_sources(conn, active_only=False) if not s["options"].get("asset") and not s["options"].get("removed")]
     typed = db_assets.typed_balances(conn)
     accounts = [dict(id=a["id"], source_id=a["source_id"], name=a["name"], kind=a["kind"], balance=typed.get(a["id"], (None, None))[0],
                      balance_date=typed.get(a["id"], (None, None))[1])
@@ -104,9 +104,12 @@ def source_action(conn: sqlite3.Connection, body: dict[str, Any]) -> dict[str, A
             if s["source_type"] != "api":
                 raise ValueError("this place is not read through an API")
             keystore.save(s["id"], connectors.clean_keys(_connector(s["connector"], s["section"]), body.get("keys")))
+            conn.execute("DELETE FROM meta WHERE k IN (?,?)", (f"fints_blocked_{s['id']}", f"fints_try_{s['id']}"))      # new keys: the bank sync may try again at once
         else:      # delete: a place that already brought in data is only switched off, so nothing you have is lost
             if conn.execute("SELECT 1 FROM accounts WHERE source_id=? LIMIT 1", (s["id"],)).fetchone():
                 db_accounts.set_source_active(conn, s["id"], False)
+                conn.execute("UPDATE sources SET options=? WHERE id=?", (json.dumps(dict(s["options"], removed=True)), s["id"]))      # switched off AND gone from the Setup list
+                keystore.delete(s["id"])
                 return {"removed": False}
             conn.execute("DELETE FROM sources WHERE id=?", (s["id"],))
             keystore.delete(s["id"])

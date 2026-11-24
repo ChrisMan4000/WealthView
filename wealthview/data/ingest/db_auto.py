@@ -3,7 +3,7 @@ importers; every other file goes through autoread.analyze(): bank and card files
 depot derived from them), crypto files crypto transactions. A file the reader cannot place waits for one plain answer (db_questions) and is read again
 once it is answered. Standard library only."""
 from __future__ import annotations
-import hashlib, sqlite3
+import datetime as dt, hashlib, sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -44,7 +44,6 @@ def import_auto_file(conn: sqlite3.Connection, path: str | Path, fid: int | None
 
 
 def _bank(conn: sqlite3.Connection, path: str, fid: int | None, source: SourceRow, a: autoread.Analysis) -> tuple[int, int]:
-    import datetime as dt
     rows = autoread.extract_bank(path, a)
     fallback = "AUTO-" + a.fingerprint[:8].upper()
     kind = "card" if a.kind == "card" else "giro"

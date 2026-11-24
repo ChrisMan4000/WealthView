@@ -37,7 +37,104 @@
   }
 
   /* ------------------------------------------------------------------ the box */
-  function card(title, body, tip) { return `<div class="otc" ${tip ? `title="${W().esc(tip)}"` : ''}><div class="otn">${title}</div>${body}</div>`; }
+  /* v1.27: every card opens a detail pop-up; the box has range buttons and opens a big day-by-day chart */
+  const CARDKEY = { 'Saved vs market': 'svm', 'Spending vs your norm': 'spend', 'Recurring costs': 'rec', 'Year over year': 'yoy' };
+  function card(title, body, tip) {
+    const key = Object.keys(CARDKEY).find(k => String(title).startsWith(k));
+    return `<div class="otc${key ? ' clk' : ''}" ${key ? `data-card="${CARDKEY[key]}"` : ''} ${tip ? `title="${W().esc(tip)}${key ? ' - click for details' : ''}"` : key ? 'title="Click for details"' : ''}><div class="otn">${title}</div>${body}</div>`;
+  }
+  const RANGES = [['7D', 7], ['30D', 30], ['3M', 90], ['1Y', 365], ['ALL', 0]];
+  const OT = { range: 'ALL' };
+  const dmyy = iso => String(iso).slice(8, 10) + '.' + String(iso).slice(5, 7) + '.' + String(iso).slice(0, 4);
+  /* the recorded days that fall into a range; fewer than 2 days would draw no line, so then all days are used */
+  function pickIdx(c, range) {
+    const ds = c.days || [], all = ds.map((_, i) => i), n = (RANGES.find(r => r[0] === range) || [0, 0])[1];
+    if (!n || ds.length < 2) return all;
+    const t = new Date(ds[ds.length - 1] + 'T00:00:00'); t.setDate(t.getDate() - n); const cut = t.toISOString().slice(0, 10);
+    const idx = all.filter(i => ds[i] >= cut); return idx.length >= 2 ? idx : all;
+  }
+  function chartHtml(c) {
+    const ds = c.days || []; if (ds.length < 2) return chart(c);
+    const idx = pickIdx(c, OT.range), sub = { days: idx.map(i => ds[i]), gross: idx.map(i => c.gross[i]) }, v = sub.gross.filter(x => x != null);
+    let line = '';
+    if (v.length >= 2) {
+      const ch = v[v.length - 1] - v[0], span = Math.round((new Date(sub.days[sub.days.length - 1]) - new Date(sub.days[0])) / 864e5), want = (RANGES.find(r => r[0] === OT.range) || [0, 0])[1];
+      line = `<div class="xs dim" style="margin-top:.15rem">Change in this range: <b class="${cls(ch)}">${sA(ch)}${v[0] ? ' (' + sP(ch / v[0] * 100) + ')' : ''}</b>${want && span < want ? ' · recorded history is shorter than this range (since ' + dmy(sub.days[0]) + ')' : ''}</div>`;
+    }
+    return chart(sub) + line;
+  }
+  function bindTime(I) {
+    const box = document.getElementById('pTime'); if (!box) return;
+    box.querySelectorAll('#otRange button').forEach(b => b.onclick = e => {
+      e.stopPropagation(); OT.range = b.dataset.r;
+      const el = document.getElementById('otChart'); if (el) el.innerHTML = chartHtml(I.curve || {});       /* in place: no redraw of the box, so the next click lands */
+      box.querySelectorAll('#otRange button').forEach(x => x.classList.toggle('on', x.dataset.r === OT.range));
+    });
+    box.querySelectorAll('.otc[data-card]').forEach(c => c.onclick = e => { e.stopPropagation(); openCard(c.dataset.card, I); });
+    box.onclick = e => { if (e.target.closest('.otc,#otRange,.hmb')) return; openBig(I); };
+  }
+
+  /* ---- big pop-up: the recorded days as a large chart */
+  function openBig(I) {
+    const w = W(), c = I.curve || {}, ds = c.days || [], bdg = w.badge('live', 'Recorded by WealthView');
+    if (ds.length < 2) { w.infoModal('Over time · your real history', '<div class="dim" style="padding:1rem">WealthView saves one real value per day. A chart appears as soon as there are two recorded days.</div>', bdg); return; }
+    const M = { range: OT.range, show: 'gross', type: 'area' }, COL = ['#2a7fd4', '#19c3e8', '#ff9a3d', '#8fe6b8', '#ffd24a'];
+    w.modalShell('Over time · your real history, day by day', bdg);
+    document.getElementById('mbody').innerHTML = '<div class="stats" id="otst"></div><div class="chart" id="otch"></div><div class="leg" id="otlg"></div><p class="xs dim" id="otnote"></p>';
+    const tools = () => {
+      const b = (attr, val, label, on) => `<button data-${attr}="${val}" class="${on ? 'on' : ''}">${label}</button>`;
+      document.getElementById('mtools').innerHTML = RANGES.map(r => b('r', r[0], r[0], M.range === r[0])).join('') + '<span class="sep"></span>' + [['gross', 'Gross'], ['net', 'Net (− loan)'], ['class', 'By class']].map(s => b('s', s[0], s[1], M.show === s[0])).join('') + '<span class="sep"></span>' + ['area', 'line', 'bar'].map(t => b('t', t, t, M.type === t)).join('');
+      document.querySelectorAll('#mtools button').forEach(x => x.onclick = () => { if (x.dataset.r) M.range = x.dataset.r; if (x.dataset.s) M.show = x.dataset.s; if (x.dataset.t) M.type = x.dataset.t; tools(); draw(); });
+    };
+    const draw = () => {
+      const idx = pickIdx(c, M.range), x = idx.map(i => ds[i]), type = M.type, one = M.show === 'net' ? 'net' : 'gross';
+      let series, stacked = false;
+      if (M.show === 'class') {
+        stacked = type !== 'line';
+        series = Object.keys(c.classes || {}).map((k, j) => ({ n: k, c: COL[j % COL.length], v: idx.map(i => c.classes[k][i]), type }));
+        if (stacked && (c.net || []).some(v => v != null)) series.push({ n: 'Net (gross − loan)', c: '#bcd6e2', v: idx.map(i => c.net[i]), type: 'line', fixed: true, dash: true, w: 1.3 });
+      } else series = [{ n: one === 'net' ? 'Net (gross − loan)' : 'Gross assets', c: one === 'net' ? '#bcd6e2' : '#19c3e8', v: idx.map(i => (c[one] || [])[i]), type }];
+      w.TS(document.getElementById('otch'), { x, xl: i => dmy(x[i]), series, stacked, kind: 'stock' });
+      const v = idx.map(i => (c[one] || [])[i]).filter(q => q != null);
+      document.getElementById('otst').innerHTML = v.length ? `<div>Start<b>${w.A(v[0])}</b></div><div>Now<b>${w.A(v[v.length - 1])}</b></div><div>Change<b class="${cls(v[v.length - 1] - v[0])}"><span class="amt">${w.eur(v[v.length - 1] - v[0])}</span>${v[0] ? ' (' + sP((v[v.length - 1] / v[0] - 1) * 100) + ')' : ''}</b></div><div>Low<b>${w.A(Math.min(...v))}</b></div><div>High<b>${w.A(Math.max(...v))}</b></div><div>Days<b>${x.length}</b></div>` : '';
+      document.getElementById('otlg').innerHTML = series.map(s => `<span><i style="background:${s.c}"></i>${w.esc(s.n)}</span>`).join('');
+      document.getElementById('otnote').innerHTML = `Recorded since ${dmyy(ds[0])} · ${ds.length} days · real values, not estimates. For the long history back to ${w.S.D && w.S.D.axis ? w.S.D.axis[0].slice(0, 4) : '2020'} (back-cast from today's holdings) open the gross assets box: <button id="otLong">Long history →</button>`;
+      document.getElementById('otLong').onclick = () => { w.closeModal(); const g = document.getElementById('pGross'); if (g) g.click(); };
+    };
+    tools(); draw();
+  }
+
+  /* ---- detail pop-ups of the four cards */
+  function miniBars(series) {
+    const v = series.map(p => p.v), hi = Math.max(...v, 1), bw = 600 / v.length;
+    return `<svg viewBox="0 0 600 90" preserveAspectRatio="none" style="width:100%;height:6rem;display:block" class="amtsvg">${v.map((x, i) => `<rect x="${(i * bw + 1).toFixed(1)}" y="${(88 - x / hi * 80).toFixed(1)}" width="${(bw - 2).toFixed(1)}" height="${Math.max(.5, x / hi * 80).toFixed(1)}" fill="rgba(25,211,255,.55)"><title>${series[i].m}: ${nf0.format(Math.round(x))} €</title></rect>`).join('')}</svg><div class="xs dim" style="display:flex;justify-content:space-between"><span>${series[0].m}</span><span>${series[series.length - 1].m}</span></div>`;
+  }
+  function openCard(key, I) {
+    const w = W(), esc = w.esc, bdg = w.badge('live', 'From your bookings & records'), row = (a, b) => `<div class="otr"><span>${a}</span><span>${b}</span></div>`;
+    const h = t => `<div class="cph" style="margin:.8rem 0 .3rem">${t}</div>`;
+    if (key === 'svm') {
+      const s = I.saved_vs_market || {}, ch = I.changes || [];
+      let html = s.ready ? h('SPLIT OF THE CHANGE · ' + dmyy(s.frm) + ' → ' + dmyy(s.to)) + row('Change of gross assets', sA(s.delta)) + row('of which saved (income − spending)', sA(s.saved)) + row('market moves & other (prices, valuations)', sA(s.market)) + '<div class="xs dim" style="margin-top:.3rem">An estimate: your monthly income and spending, spread over the days between the first and last recorded day.</div>'
+        : `<div class="dim sm">Needs ${s.need_days || 28} recorded days; WealthView has ${s.have_days || 0} so far. Then the growth of your gross assets is split into money you saved and market moves.</div>`;
+      html += h('CHANGE OF GROSS ASSETS PER PERIOD') + (ch.map(c => row(esc(c.label) + (c.partial ? ' <span class="xs dim">(since ' + dmyy(c.base) + ')</span>' : ''), `<b class="${cls(c.gross || 0)}">${sA(c.gross)} ${c.gross_pct != null ? '(' + sP(c.gross_pct) + ')' : ''}</b>`)).join('') || '<div class="dim xs">Appears after the second recorded day.</div>');
+      const last = ch[ch.length - 1]; if (last && last.classes) html += h('BY ASSET CLASS · ' + esc(last.label).toUpperCase()) + Object.entries(last.classes).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([k, v]) => row(esc(k), `<span class="${cls(v)}">${sA(v)}</span>`)).join('');
+      w.infoModal('Saved vs market', html, bdg);
+    } else if (key === 'spend') {
+      const sp = I.spend_vs_norm || {};
+      const html = sp.ready ? h('LAST FULL MONTH · ' + esc(sp.month) + ' · AGAINST THE MEDIAN OF THE 12 MONTHS BEFORE') + `<div class="otr xs dim"><span>Category</span><span>this month · usual · difference</span></div>` + ((sp.items || []).map(i => row(esc(i.cat), `${w.A(i.value)} <span class="dim xs">usual ${w.A(i.norm)}</span> <b class="${i.delta > 0 ? 'neg' : 'pos'}">${sA(i.delta)}${i.pct != null ? ' (' + sP(i.pct) + ')' : ''}</b>`)).join('') || '<div class="dim xs">Nothing far from your usual.</div>') + '<div class="xs dim" style="margin-top:.4rem">Only categories that differ by at least 50 € and 25 % are listed (largest first, up to 6). Click a category in the spending box for its bookings.</div>' : `<div class="dim sm">${esc(sp.reason || '')}</div>`;
+      w.infoModal('Spending vs your norm', html, bdg);
+    } else if (key === 'rec') {
+      const rc = I.recurring || {};
+      const html = rc.ready ? h('MONTHLY TOTAL OF RECURRING PAYMENTS · LAST ' + (rc.series || []).length + ' MONTHS') + ((rc.series || []).length ? miniBars(rc.series) : '') + h('NOW') + row(rc.n + ' recurring payments, a month', `<b>${w.A(rc.now)}</b>`) + (rc.ago != null ? row('a year ago', w.A(rc.ago)) : '') +
+        h('GOT MORE EXPENSIVE') + ((rc.creep || []).map(c => row(esc(c.n), `<span class="neg">${nf1.format(c.was)} → ${nf1.format(c.now)} € (${sP(c.pct)})</span>`)).join('') || '<div class="dim xs">None.</div>') +
+        h('NEW IN THE LAST YEAR') + ((rc.new || []).map(c => row(esc(c.n), `${nf1.format(c.now)} € a month`)).join('') || '<div class="dim xs">None.</div>') : `<div class="dim sm">${esc(rc.reason || '')}</div>`;
+      w.infoModal('Recurring costs', html, bdg);
+    } else if (key === 'yoy') {
+      const y = I.yoy || {};
+      const html = y.ready ? h('LAST 12 FULL MONTHS (TO ' + esc(y.to) + ') AGAINST THE 12 BEFORE') + `<div class="otr xs dim"><span></span><span>last 12 · before · change</span></div>` + ['income', 'expense', 'saved'].map(k => row(k, `${w.A(y.now[k])} <span class="dim xs">before ${w.A(y.prev[k])}</span> <b class="${(k === 'expense' ? -1 : 1) * (y.change_pct[k] || 0) >= 0 ? 'pos' : 'neg'}">${sP(y.change_pct[k])}</b>`)).join('') + '<div class="xs dim" style="margin-top:.4rem">Green = better for you (more income or savings, less spending).</div>' : `<div class="dim sm">${esc(y.reason || '')}</div>`;
+      w.infoModal('Year over year', html, bdg);
+    }
+  }
   function pTime(d) {
     const w = W(); w.POST.push(() => { try { place(); } catch (e) { console.error(e); } });
     const I = d.insights || (d.mode === 'demo' ? demoInsights(d) : null);
@@ -48,7 +145,9 @@
     const sp = I.spend_vs_norm || {}, s2 = sp.ready ? card('Spending vs your norm · ' + sp.month, (sp.items || []).slice(0, 4).map(i => `<div class="otr"><span>${w.esc(i.cat)}</span><span class="${i.delta > 0 ? 'neg' : 'pos'}">${sA(i.delta)} ${i.pct != null ? '<span class="xs">' + sP(i.pct) + '</span>' : ''}</span></div>`).join('') || '<div class="dim xs">Nothing far from your usual.</div>', 'Last full month against the median of your previous 12 months, per category.') : card('Spending vs your norm', `<div class="dim xs">${w.esc(sp.reason || '')}</div>`);
     const rc = I.recurring || {}, s3 = rc.ready ? card('Recurring costs', `<div class="otv">${w.A(rc.now)} <span class="dim xs">a month · ${rc.n} payments</span></div>${rc.ago != null ? `<div class="xs dim">a year ago: ${w.A(rc.ago)}</div>` : ''}${(rc.creep || []).slice(0, 2).map(c => `<div class="otr"><span>${w.esc(c.n)}</span><span class="neg xs">${nf1.format(c.was)} → ${nf1.format(c.now)} € (${sP(c.pct)})</span></div>`).join('')}`, 'Payments that appear nearly every month, and those that got more expensive.') : card('Recurring costs', `<div class="dim xs">${w.esc(rc.reason || '')}</div>`);
     const y = I.yoy || {}, s4 = y.ready ? card('Year over year · to ' + y.to, ['income', 'expense', 'saved'].map(k => `<div class="otr"><span>${k}</span><span>${w.A(y.now[k])} <span class="${(k === 'expense' ? -1 : 1) * (y.change_pct[k] || 0) >= 0 ? 'pos' : 'neg'} xs">${sP(y.change_pct[k])}</span></span></div>`).join(''), 'Last 12 full months against the 12 months before.') : card('Year over year', `<div class="dim xs">${w.esc(y.reason || '')}</div>`);
-    return w.panel('pTime', 'Over time <b>//</b> your real history', bd, `<div style="overflow:auto;flex:1;min-height:0"><div class="otchips">${chips}</div>${chart(I.curve || {})}<div class="otg">${s1}${s2}${s3}${s4}</div></div>`, { style: 'flex:1.9;min-height:12rem' });
+    w.POST.push(() => bindTime(I));
+    const rng = RANGES.map(r => `<button data-r="${r[0]}" class="${OT.range === r[0] ? 'on' : ''}">${r[0]}</button>`).join('');
+    return w.panel('pTime', 'Over time <b>//</b> your real history', bd, `<div style="overflow:auto;flex:1;min-height:0"><div class="otchips">${chips}</div><div class="otrange" id="otRange">${rng}<span class="xs dim">click the box for the big chart · click a card for details</span></div><div id="otChart">${chartHtml(I.curve || {})}</div><div class="otg">${s1}${s2}${s3}${s4}</div></div>`, { cls: 'click', style: 'flex:1.9;min-height:12rem' });
   }
 
   /* ------------------------------------------------------------------ Smart suggestions + System status */
@@ -83,14 +182,21 @@
 #chatBtns button{flex:1;min-height:1.55rem;padding:.1rem .5rem;width:100%}#chatMic{font-size:1rem;padding:.1rem .4rem !important}#chatMic.on{border-color:var(--rd);color:var(--rd);animation:pl 1s infinite}
 .otchips{display:flex;flex-wrap:wrap;gap:.3rem .8rem;margin-bottom:.3rem;font-size:max(var(--minfs,0px),0.72rem)}.otchip b{font-weight:400}
 .otg{display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:.4rem;margin-top:.4rem}.otc{border:1px solid rgba(60,190,235,.22);padding:.3rem .45rem;background:rgba(0,20,32,.4)}
-.otn{font-size:max(var(--minfs,0px),0.62rem);letter-spacing:.12em;text-transform:uppercase;color:var(--or);margin-bottom:.2rem}.otv{font-size:0.95rem;color:#fff}.otr{display:flex;justify-content:space-between;gap:.5rem;font-size:max(var(--minfs,0px),0.74rem);padding:.05rem 0}`;
+.otn{font-size:max(var(--minfs,0px),0.62rem);letter-spacing:.12em;text-transform:uppercase;color:var(--or);margin-bottom:.2rem}.otv{font-size:0.95rem;color:#fff}.otr{display:flex;justify-content:space-between;gap:.5rem;font-size:max(var(--minfs,0px),0.74rem);padding:.05rem 0}
+.otrange{display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;margin:.2rem 0}.otrange button{padding:.05rem .5rem;font-size:max(var(--minfs,0px),0.72rem)}.otrange button.on{border-color:var(--or);color:var(--or);background:rgba(255,154,61,.1)}
+.otc.clk{cursor:pointer}.otc.clk:hover{border-color:rgba(255,154,61,.6)}#otnote button{padding:.05rem .5rem}`;
     document.head.appendChild(st);
     const box = document.createElement('div'); box.id = 'chat';
     box.innerHTML = '<div id="log"><button id="logdel" title="Delete this chat (the answers shown and what the model remembers of it)">delete chat</button><button id="logx" title="Hide the chat (it is kept until you delete it)">✕</button><div id="logb"></div></div><div id="chatInfo"><span id="chatSt">Ask anything</span><span>your data stays on this PC · web look-ups send only search words</span></div><div id="chatBar"><textarea id="chatIn" rows="1" autocomplete="off" spellcheck="false" maxlength="1500"></textarea><div id="chatBtns"><button id="chatMic" title="Speak your question">🎤</button><button id="chatGo">Ask</button></div></div>';
     A.box = box; document.body.appendChild(box);
     const inp = document.getElementById('chatIn'), go = document.getElementById('chatGo'), mic = document.getElementById('chatMic');
     const grow = () => { inp.style.height = 'auto'; inp.style.height = Math.max(Math.min(inp.scrollHeight + 2, 176), 54) + 'px'; act(); };
-    const act = () => box.classList.toggle('act', document.activeElement === inp || !!inp.value || A.hist.length > 0 || document.getElementById('log').classList.contains('on'));
+    /* v1.27 double-click fix: pressing Ask / the mic blurs the text box, which used to shrink it and move the button before the mouse was
+       released (click lost). While the mouse is down inside the bar the box keeps its size; it settles on release. */
+    let pressed = false;
+    box.addEventListener('mousedown', () => { pressed = true; });
+    document.addEventListener('mouseup', () => { if (pressed) { pressed = false; setTimeout(act, 0); } }, true);
+    const act = () => box.classList.toggle('act', pressed || document.activeElement === inp || !!inp.value || A.hist.length > 0 || document.getElementById('log').classList.contains('on'));
     A.grow = grow; A.act = act;
     inp.addEventListener('input', grow); inp.addEventListener('focus', act); inp.addEventListener('blur', act);
     inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } e.stopPropagation(); });

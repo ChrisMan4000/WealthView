@@ -128,10 +128,6 @@ def uninstall() -> None:
 
 
 # ------------------------------------------------------------------ where is a host
-def _jload(p: str | Path) -> dict[str, Any]:
-    return fileio.load_json_cache(p, {})
-
-
 def _mmdb() -> Any:
     if not _state.geo_tried:
         _state.geo_tried = True
@@ -254,7 +250,7 @@ def snapshot() -> NetlogSnapshot:
     rows = _recent_rows(now)
     agg = _aggregate(rows)
     geo_file = paths.data_path("netgeo.json")
-    cache = _jload(geo_file)
+    cache = fileio.load_json_cache(geo_file, {})
     before = json.dumps(cache, sort_keys=True)
     nodes = []
     for a in sorted(agg.values(), key=lambda x: -x["last"])[:40]:

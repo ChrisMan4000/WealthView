@@ -70,3 +70,8 @@ START_MONTH = "2020-11"  # apartment purchase = start of the long-term axis
 def axis() -> list[str]:
     """The shared month axis START_MONTH .. current month, computed on first use (not when the module is imported)."""
     return mrange(START_MONTH, now_month())
+
+
+def now_iso() -> str:
+    """The current local time as an ISO string without sub-seconds (what the database stores)."""
+    return dt.datetime.now().isoformat(timespec="seconds")

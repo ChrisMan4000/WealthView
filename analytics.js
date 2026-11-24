@@ -180,6 +180,17 @@
 
   /* ---------- single-company pop-up (private-equity start-ups and other single holdings) ---------- */
   const NF0 = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 });
+  /* Eternal Power / wiwin bond key data (shown only when config.json wiwin.terms exists) */
+  function bondTerms(wi, w) {
+    const t = wi.terms, esc = w.esc, ul = a => '<ul class="xs dim" style="margin:.2rem 0 0 1rem;padding:0">' + (a || []).map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>';
+    const kv = [['Interest', String(t.rate).replace('.', ',') + ' % p.a.'], ['Bonus', esc(t.bonus || '-')], ['Paid in', esc(t.paid_in || '-')], ['Term ends', esc(t.end || '-')], ['Last payout', esc(t.final || '-')], ['ISIN', esc(t.isin || '-')], ['Type', esc(t.type || '-')], ['Issuer call', esc(t.call || '-')]];
+    const sch = (t.schedule || []).map(r => '<div class="tr" style="grid-template-columns:6.5rem 1fr auto"><span>' + esc(r.date) + '</span><span>' + esc(r.what) + '</span><span class="r">' + w.A(r.amt) + '</span></div>').join('');
+    const tot = (t.schedule || []).reduce((a, r) => a + (r.amt || 0), 0);
+    return '<div class="card"><h4>Bond key data</h4><div class="stats">' + kv.map(x => '<div>' + x[0] + '<b style="font-size:.8em">' + x[1] + '</b></div>').join('') + '</div></div>'
+      + '<div class="card" style="margin-top:.5rem"><h4>Expected payouts</h4>' + sch + '<div class="tr" style="grid-template-columns:6.5rem 1fr auto"><span></span><span><b>Total back if all is paid</b></span><span class="r"><b>' + w.A(tot) + '</b></span></div><div class="xs dim">' + esc(t.schedule_note || '') + '</div></div>'
+      + '<div class="side" style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-top:.5rem"><div class="card"><h4>Risks</h4>' + ul(t.risks) + '</div><div class="card"><h4>Firm health (plan)</h4>' + ul(t.firm) + '</div></div>'
+      + '<div class="xs dim">Source: ' + esc(t.source || '') + '</div>';
+  }
   function companyModal(c, o) {
     o = o || {}; const w = W(), lg = window.WF_LOGOS || {}, wi = c.wiwin, esc = w.esc;
     const web = c.web || (o.fund && o.fund.portfolio_url) || '';
@@ -189,6 +200,7 @@
     const body = `<div class="pp"><div class="hdr"><div class="lgw" style="width:6rem;height:3.9rem;border:1px solid rgba(60,190,235,.3);background:#0b141b;overflow:hidden;display:flex;align-items:center;justify-content:center">${logoHtml}</div><div><h2>${esc(c.name)}</h2><small>${esc(wi ? 'Crowd investment via ' + (wi.platform || 'wiwin.de') : (c.industry || '') + (c.sector ? ' · ' + c.sector : ''))}</small></div></div>
       <div class="stats">${own.map(x => `<div>${x[0]}<b>${x[1]}</b></div>`).join('')}</div>
       <p class="dim sm">${esc(c.blurb || '')}</p>
+      ${wi && wi.terms ? bondTerms(wi, w) : ''}
       <div class="side" style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem"><div class="card" id="coFacts"><h4>Company facts</h4><div class="ld"><span class="spinner"></span>looking up …</div></div><div class="card news" id="coNews"><h4>Latest news</h4><div class="ld"><span class="spinner"></span>looking up headlines …</div></div></div>
       <div class="xs dim" id="coLinks"></div></div>`;
     w.infoModal(esc(c.name), body, wi ? w.srcBadge('wiwin', w.S.D) : w.srcBadge('examplefund', w.S.D));

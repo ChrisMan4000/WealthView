@@ -167,8 +167,11 @@ def read_table(path: str | Path, limit: int | None = None) -> Table | None:
     if dec is None or not dec[0].strip():
         return None
     text, enc = dec
-    delim = _pick_delimiter(text)
-    rows = [[c.strip() for c in r] for r in csv.reader(io.StringIO(text), delimiter=delim) if any(c.strip() for c in r)]
+    try:
+        delim = _pick_delimiter(text)
+        rows = [[c.strip() for c in r] for r in csv.reader(io.StringIO(text), delimiter=delim) if any(c.strip() for c in r)]
+    except csv.Error:        # e.g. a field longer than the csv limit: not a readable table
+        return None
     wide = [len(r) for r in rows[:80] if len(r) >= 2]
     if not wide:
         return None

@@ -9,7 +9,7 @@ from ..analysis import ask
 from ..common import config
 from ..common.fileio import write_atomic
 from ..common.paths import data_path
-from ..data.ingest import fund_files, quotes
+from ..data.ingest import fund_files
 
 CACHE_NAME = "fund_reports_cache.json"
 
@@ -53,6 +53,3 @@ def make_fund_reader(asker: Callable[[str, str], str] | None = None, cache_path:
         return res
     return reader
 
-
-def isin_price(isin: str) -> dict[str, Any] | None:
-    return quotes.price_by_isin(isin)

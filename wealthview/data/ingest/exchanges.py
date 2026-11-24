@@ -2,7 +2,7 @@
 coinbase_fetch.mjs, and only gets its keys from here). Only signed GET / balance calls are made: nothing can be traded or moved.
 The keys come from keystore (Windows Credential Manager) and never appear in an error text, a log or the result. Standard library only."""
 from __future__ import annotations
-import base64, hashlib, hmac, json, sqlite3, time, urllib.error, urllib.parse, urllib.request
+import base64, datetime as dt, hashlib, hmac, json, os, re, sqlite3, time, urllib.error, urllib.parse, urllib.request
 from typing import Any, Callable
 
 from ...common import netlog, safenet
@@ -10,7 +10,7 @@ from ...common.parsing import round2
 from ...common.runcontext import RunContext
 from ...common.timeutil import now
 from ...common.types.depot import CryptoBlock, Holding
-from . import coinbase_api, connectors, db_accounts, keystore
+from . import coinbase_api, connectors, db_accounts, fints_sync, keystore
 
 FIAT_EUR = {"EUR": 1.0}
 TIMEOUT = 20
@@ -188,7 +188,7 @@ def load_blocks(ctx: RunContext, conn: sqlite3.Connection, price_of: Callable[[s
 
 
 def test_source(conn: sqlite3.Connection, source_id: Any, readers: dict[str, Callable[[dict[str, str]], dict[str, float]]] | None = None,
-                coinbase: Callable[..., dict[str, Any]] = coinbase_api.fetch) -> dict[str, Any]:
+                coinbase: Callable[..., dict[str, Any]] = coinbase_api.fetch, fints_fetch: Callable[..., Any] | None = None) -> dict[str, Any]:
     """Tries one API place right now (v1.22) and says in one plain sentence what came back: {ok, text}. Nothing is stored."""
     src = next((s for s in db_accounts.list_sources(conn, active_only=False) if s["id"] == source_id and s["source_type"] == "api"), None)
     if src is None:
@@ -199,7 +199,6 @@ def test_source(conn: sqlite3.Connection, source_id: Any, readers: dict[str, Cal
     keys = keystore.load(src["id"])
     try:
         if con["id"] == "coinbase":
-            import os
             name = keys.get("key_name") or os.environ.get("COINBASE_KEY_NAME", "")
             secret = keys.get("key_secret") or os.environ.get("COINBASE_KEY_SECRET", "")
             if not (name and secret):
@@ -207,6 +206,29 @@ def test_source(conn: sqlite3.Connection, source_id: Any, readers: dict[str, Cal
             got = coinbase(name, secret, transactions=False)
             coins, total = len(got.get("holdings", [])), got.get("total_eur")
             return {"ok": True, "text": f"connection works: {coins} coin{'' if coins == 1 else 's'} found" + (", about " + f"{total:,.0f}".replace(",", ".") + " EUR" if total else "")}
+        if con["id"] == "fints":       # a real login: the bank app asks for ONE confirmation; nothing is stored
+            last = conn.execute("SELECT name FROM files WHERE name LIKE 'Depotbestand\\_%' ESCAPE '\\' ORDER BY id DESC LIMIT 1").fetchone()
+            num = (re.match(r"Depotbestand_(\d{6,})_", last[0]) or [None, None])[1] if last else None      # the depot number is part of the bank's export file name
+            fints_fetch = fints_fetch or (lambda k, since: fints_sync.fetch_all(k, since, depot=True, depot_number=num))
+            try:
+                got = fints_fetch(keys, (dt.date.today() - dt.timedelta(days=7)).isoformat())
+            except fints_sync.FintsError as e:
+                return {"ok": False, "text": str(e)}
+            rows, held = got if isinstance(got, tuple) else (got, None)
+            n = len(rows)
+            text = f"connection works: {n} booking{'' if n == 1 else 's'} in the last 7 days"
+            if held is not None:
+                pos = held.get("positions") or []
+                tot = sum(p["value"] or 0 for p in pos)
+                csv = conn.execute("SELECT asof, SUM(value) FROM depot_positions WHERE asof=(SELECT MAX(asof) FROM depot_positions)").fetchone()
+                de = lambda v: f"{v:,.0f}".replace(",", ".")
+                if pos:
+                    text += f" · securities: {len(pos)} position{'' if len(pos) == 1 else 's'}, about {de(tot)} EUR"
+                    if csv and csv[0]:
+                        text += f" (your last depot file, {csv[0]}: {de(csv[1])} EUR)"
+                else:
+                    text += " · securities: none from the bank (" + "; ".join(held.get("notes") or ["no answer"]) + ")"
+            return {"ok": True, "text": text}
         if not keys:
             return {"ok": False, "text": "no API key stored yet"}
         coins = len((readers or READERS)[con["id"]](keys))

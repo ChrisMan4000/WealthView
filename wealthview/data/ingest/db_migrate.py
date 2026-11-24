@@ -7,6 +7,7 @@ import os, sqlite3
 from pathlib import Path
 from typing import Any
 
+from ...common.paths import norm_path as _norm
 from ...common.types.accounts import UpgradeReport
 from . import db_accounts, db_schema
 from .db_import import csv_pseudo_iban
@@ -36,10 +37,6 @@ def _backup(conn: sqlite3.Connection, target: Path) -> None:
     finally:
         dst.close()
     os.replace(part, target)
-
-
-def _norm(folder: str) -> str:
-    return os.path.normcase(os.path.abspath(folder))
 
 
 def _folder_name(folder: str) -> str:

@@ -8,6 +8,7 @@ import datetime as dt
 from pathlib import Path
 
 from ...common import parsing, safenet
+from ...common.paths import norm_path as _norm
 from ...common.types.accounts import SourceRow
 from ...common.types.status import ImportedFile, SyncReport
 from . import db_accounts, db_auto, gls_parse, plugins
@@ -294,10 +295,6 @@ def csv_sources(cfg: dict[str, Any]) -> list[dict[str, Any]]:
     """The usable entries of cfg["csv_sources"] ([{folder, entity, mapping}]); anything malformed is ignored."""
     raw = cfg.get("csv_sources")
     return [s for s in raw if isinstance(s, dict) and isinstance(s.get("folder"), str) and s["folder"]] if isinstance(raw, list) else []
-
-
-def _norm(p: str | Path) -> str:
-    return os.path.normcase(os.path.abspath(str(p)))
 
 
 def _csv_files(cfg: dict[str, Any]) -> list[tuple[str, Path, dict[str, Any]]]:

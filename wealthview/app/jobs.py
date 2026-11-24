@@ -33,7 +33,7 @@ class Refresher:
         self.lock = threading.Lock()
         self.on_finished = on_finished      # called after the subprocess ended (the server drops its live-quote cache there)
 
-    def run(self, args: list[str] | None = None, tmo: int = FULL_REFRESH_TIMEOUT_S) -> dict[str, Any]:
+    def run(self, args: list[str] | None = None, timeout_s: int = FULL_REFRESH_TIMEOUT_S) -> dict[str, Any]:
         """Starts the refresh and waits for it -> {ok, seconds, log, error?}; {ok: False, busy: True} when one is already running."""
         if not self.lock.acquire(blocking=False):
             return dict(ok=False, busy=True, error="a refresh is already running", log="a refresh is already running")
@@ -47,7 +47,7 @@ class Refresher:
             t0 = time.time()
             try:
                 p = subprocess.run([sys.executable.replace("pythonw.exe", "python.exe"), str(paths.BASE / "refresh.py")] + (args or []),  # nosec B603 - fixed argument list, no shell
-                                   capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=tmo,
+                                   capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout_s,
                                    cwd=str(paths.BASE), env=env, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 if self.on_finished:
                     self.on_finished()

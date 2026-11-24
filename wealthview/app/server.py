@@ -20,8 +20,8 @@ from ..analysis import advisor, ask, research
 from ..common import audit, config, folderbrowse, netlog, paths, safenet
 from ..common.bootstrap import bootstrap
 from ..common.profile import load_profile
-from ..data.finance import catrules
-from ..data.ingest import company_info, db_queries, db_rules, db_schema, db_setup, exchanges, logo_fetch, logos_online, quotes
+from ..data.finance import catrules, groceries
+from ..data.ingest import company_info, db_queries, db_rules, db_schema, db_setup, exchanges, logo_fetch, logos_online, quotes, watchlist
 from . import auth, jobs, lifetime
 
 LIVE_TTL_S = 20            # live quotes are re-fetched at most this often
@@ -51,16 +51,38 @@ class ServerState:
         self.life = lifetime.PageLife()
         self.live = LiveQuotes()
         self.refresher = jobs.Refresher(on_finished=self.live.reset)
-        self.last_read_audit = 0.0         # time of the last 'read_data' audit entry
+        self.read_audit: dict[str, float] = {}      # audit event of a read -> time of its last audit entry
 
 
 STATE = ServerState()
 STATIC = {"/": "wealthview.html", "/wealthview.html": "wealthview.html", "/wf_logos.js": "wf_logos.js",
-          "/wv.js": "wv.js", "/layout.js": "layout.js", "/flowpop.js": "flowpop.js", "/catrules.js": "catrules.js", "/setup.js": "setup.js", "/analytics.js": "analytics.js", "/insights.js": "insights.js", "/wv_demo.js": "wv_demo.js", "/wf_data.js": "wf_data.js", "/wv-intro.js": "wv-intro.js", "/version.js": "version.js", "/land-110m.json": "vendor/land-110m.json", "/favicon.ico": "icons/wealthview.ico"}
+          "/wv.js": "wv.js", "/layout.js": "layout.js", "/flowpop.js": "flowpop.js", "/catrules.js": "catrules.js", "/groceries.js": "groceries.js", "/setup.js": "setup.js", "/analytics.js": "analytics.js", "/insights.js": "insights.js", "/wv_demo.js": "wv_demo.js", "/wf_data.js": "wf_data.js", "/wv-intro.js": "wv-intro.js", "/version.js": "version.js", "/land-110m.json": "vendor/land-110m.json", "/favicon.ico": "icons/wealthview.ico"}
 # Deny by default: every /api/ route needs a PIN session unless it is listed here, so a new route is protected without anyone
 # having to remember to lock it. Static files are public except the ones in LOCKED_PATHS (answered as an empty script).
-PUBLIC_API = frozenset({"/api/ping", "/api/hb", "/api/bye", "/api/unlock"})
+# The pairs are (HTTP method, path): a public path is public for that one method only.
+PUBLIC_API = frozenset({("GET", "/api/ping"), ("GET", "/api/hb"), ("POST", "/api/bye"), ("POST", "/api/unlock")})
 LOCKED_PATHS = frozenset({"/wf_data.js"})
+# One route table per method: path -> (handler method name, audit event or None). GET handlers take no argument, POST handlers take the
+# JSON body; a handler answers a body (sent as 200) or a (code, body) pair. Reads of private data are noted in the audit log (event name only,
+# at most once per READ_AUDIT_EVERY_S, because the page polls them); the handlers of lookups and writes record their own audit entry.
+GET_ROUTES: dict[str, tuple[str, str | None]] = {
+    "/api/hb": ("_api_hb", None), "/api/ping": ("_api_ping", None), "/api/real": ("_api_real", "read_data"),
+    "/api/live": ("_live", "read_live"), "/api/logo": ("_api_logo", None), "/api/company": ("_api_company", None),
+    "/api/research": ("_api_research", None), "/api/netlog": ("_api_netlog", "read_netlog"), "/api/profile": ("_api_profile", "read_profile"),
+    "/api/paypal": ("_api_paypal", "read_paypal"), "/api/src_logos": ("_api_src_logos", "read_src_logos"),
+    "/api/ask/status": ("_api_ask_status", None), "/api/unusual_seen": ("_api_seen_get", "read_unusual_seen"),
+    "/api/cat/overview": ("_api_cat_overview", "read_categories"), "/api/setup/state": ("_api_setup_state", "read_setup"),
+    "/api/setup/browse": ("_api_setup_browse", "browse_folders"),
+    "/api/groceries": ("_api_groceries", "read_groceries"), "/api/watch": ("_api_watch", None), "/api/settings": ("_api_settings", None),
+}
+POST_ROUTES: dict[str, tuple[str, str | None]] = {
+    "/api/bye": ("_api_bye", None), "/api/unlock": ("_api_unlock", None), "/api/lock": ("_api_lock", None),
+    "/api/refresh": ("_api_refresh", None), "/api/quick": ("_api_quick", None), "/api/unusual_seen": ("_api_unusual_seen", "unusual_seen_add"),
+    "/api/ask": ("_api_ask", None), "/api/cat/set": ("_api_cat_set", None), "/api/cat/delete": ("_api_cat_delete", None),
+    "/api/setup/source": ("_api_setup_source", None), "/api/setup/asset": ("_api_setup_asset", None),
+    "/api/watch/set": ("_api_watch_set", None), "/api/settings/set": ("_api_settings_set", None),
+    "/api/setup/balance": ("_api_setup_balance", None), "/api/setup/answer": ("_api_setup_answer", None), "/api/setup/test": ("_api_setup_test", None),
+}
 MIME = {".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8",
         ".ico": "image/x-icon", ".png": "image/png", ".json": "application/json"}
 
@@ -162,9 +184,9 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _authed(self) -> bool:
         return STATE.auth.is_signed_in(self.headers.get("X-WV-Token", ""))
 
-    def _blocked(self, path: str) -> bool:
-        """Central PIN gate: True (and the reply already sent) when `path` needs a session and there is none."""
-        needs_pin = path in LOCKED_PATHS or (path.startswith("/api/") and path not in PUBLIC_API)
+    def _blocked(self, method: str, path: str) -> bool:
+        """Central PIN gate: True (and the reply already sent) when (method, path) needs a session and there is none."""
+        needs_pin = path in LOCKED_PATHS or (path.startswith("/api/") and (method, path) not in PUBLIC_API)
         if not needs_pin or self._authed():
             return False
         if path.endswith(".js"):
@@ -223,6 +245,17 @@ class RequestHandler(BaseHTTPRequestHandler):
             return {"ok": False, "error": "no generated logos yet"}
 
     @api_boundary()
+    def _api_paypal(self) -> Any:
+        """the stored PayPal activity, newest first: rows [date, time, name, type, status, currency, gross, fee, net, balance] (read only)"""
+        try:
+            with open_data_db() as conn:
+                total, rows = db_queries.paypal_activity(conn)
+        except (sqlite3.Error, OSError) as exc:
+            safenet.swallowed("server._api_paypal", exc)
+            return {"ok": False, "error": "the PayPal activity could not be read yet"}
+        return {"ok": True, "total": total, "rows": rows}
+
+    @api_boundary()
     def _api_profile(self) -> Any:
         # what this installation shows (layout.js decides the boxes from it); the source folders stay on the server
         p = load_profile().to_dict()
@@ -244,34 +277,49 @@ class RequestHandler(BaseHTTPRequestHandler):
             netlog.wait(old, NETLOG_WAIT_S)          # long poll: answers as soon as a new connection is logged
         return netlog.snapshot()
 
-    def _api_real(self) -> None:
+    def _api_real(self) -> Any:
         f = paths.data_path("data.json")
         if not f.exists():
-            return self._send(404, {"error": "no data yet - press REFRESH"})
-        now = time.time()
-        if now - STATE.last_read_audit >= READ_AUDIT_EVERY_S:      # the page re-reads the data often: note it only now and then
-            STATE.last_read_audit = now
-            audit.record("read_data")
-        return self._send(200, f.read_bytes())
+            return 404, {"error": "no data yet - press REFRESH"}
+        return f.read_bytes()      # the document itself (data.json), not an envelope
 
-    def do_GET(self) -> None:
+    def _read_audit(self, event: str) -> None:
+        """Note a read of private data in the audit log, at most once per READ_AUDIT_EVERY_S per event (the page re-reads often)."""
+        now = time.time()
+        if now - STATE.read_audit.get(event, 0.0) >= READ_AUDIT_EVERY_S:
+            STATE.read_audit[event] = now
+            audit.record(event)
+
+    def _reply(self, result: Any) -> None:
+        """Send a handler's answer: a (code, body) pair as it is, anything else as 200."""
+        if isinstance(result, tuple):
+            return self._send(*result)
+        return self._send(200, result)
+
+    def _route(self, method: str) -> None:
+        """The one request path for GET and POST: host check, PIN gate, route table lookup, audit of a read, handler, reply."""
         if not self._host_ok():
             return self._send(403, {"error": "forbidden"})
         path = self.path.split("?")[0]
-        if self._blocked(path):
+        if self._blocked(method, path):
             return
-        if path in STATIC:
+        if method == "GET" and path in STATIC:
             return self._static(STATIC[path])
-        if path == "/api/real":
-            return self._api_real()
-        handlers = {"/api/hb": self._api_hb, "/api/ping": self._api_ping, "/api/live": self._live,
-                    "/api/logo": self._api_logo, "/api/company": self._api_company, "/api/research": self._api_research,
-                    "/api/netlog": self._api_netlog, "/api/profile": self._api_profile, "/api/src_logos": self._api_src_logos,
-                    "/api/ask/status": self._api_ask_status, "/api/unusual_seen": self._api_seen_get,
-                    "/api/cat/overview": self._api_cat_overview, "/api/setup/state": self._api_setup_state, "/api/setup/browse": self._api_setup_browse}
-        if path in handlers:
-            return self._send(200, handlers[path]())
-        self._send(404, {"error": "not found"})
+        route = (GET_ROUTES if method == "GET" else POST_ROUTES).get(path)
+        body = self._json() if method == "POST" else None
+        if route is None:
+            return self._send(404, {"error": "not found"})
+        name, read_event = route
+        if read_event:
+            self._read_audit(read_event) if method == "GET" else audit.record(read_event)      # reads: throttled; a write: every time
+        handler = getattr(self, name)
+        return self._reply(handler(body) if method == "POST" else handler())
+
+    def do_GET(self) -> None:
+        self._route("GET")
+
+    def do_POST(self) -> None:
+        self._route("POST")
 
     def _static(self, name: str) -> None:
         """send one of the page files (STATIC maps the URL to the file name)"""
@@ -281,10 +329,12 @@ class RequestHandler(BaseHTTPRequestHandler):
         # a missing file is a 404 (never an empty 200): optional scripts carry an onerror handler in wealthview.html
         return self._send(404, {"error": "missing " + name})
 
+    @api_boundary()
     def _api_hb(self) -> dict[str, Any]:
         STATE.life.heartbeat((self._query().get("id") or ["?"])[0][:40])
         return {"ok": True}
 
+    @api_boundary()
     def _api_ping(self) -> dict[str, Any]:
         return {"ok": True, "app": "WealthView", "version": paths.version()}
 
@@ -292,6 +342,7 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _api_ask_status(self) -> dict[str, Any]:
         return ask.lm_status(config.load_config().get("ask", {}))
 
+    @api_boundary()
     def _live(self) -> dict[str, Any]:
         live = STATE.live
         with live.lock:
@@ -306,11 +357,17 @@ class RequestHandler(BaseHTTPRequestHandler):
             return live.v
 
     # ------------------------------------------------------------- POST
+    def _api_bye(self, body: dict[str, Any]) -> dict[str, Any]:
+        """the page was closed (sendBeacon): the server may stop after a short grace"""
+        STATE.life.goodbye((self._query().get("id") or ["?"])[0][:40])
+        return {"ok": True}
+
+    def _api_unlock(self, body: dict[str, Any]) -> Any:
+        return unlock_reply(body)      # (code, reply), or {ok: false, error} when the boundary caught an error
+
     def _unlock(self, body: dict[str, Any]) -> None:
         out = unlock_reply(body)
-        if isinstance(out, tuple):
-            return self._send(*out)
-        return self._send(200, out)      # the boundary caught an error: {ok: false, error}
+        return self._send(*out) if isinstance(out, tuple) else self._send(200, out)
 
     @api_boundary()
     def _ask_reply(self, q: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -324,46 +381,29 @@ class RequestHandler(BaseHTTPRequestHandler):
             portfolio = ""
         return dict(ask.answer(paths.data_path(db_schema.DB_NAME), q, body.get("history"), config.load_config().get("ask", {}), portfolio=portfolio))
 
-    def _ask(self, body: dict[str, Any]) -> None:
+    def _api_ask(self, body: dict[str, Any]) -> dict[str, Any]:
         q = str(body.get("question") or "").strip()
         audit.record("ask", f"{len(q)} characters")
-        return self._send(200, self._ask_reply(q, body))
+        return self._ask_reply(q, body)
+
+    def _api_lock(self, body: dict[str, Any]) -> dict[str, Any]:
+        """sign out: the session token stops working at once"""
+        return lock_reply(self.headers.get("X-WV-Token", ""))
 
     def _lock(self) -> None:
         return self._send(200, lock_reply(self.headers.get("X-WV-Token", "")))
 
-    def do_POST(self) -> None:
-        if not self._host_ok():
-            return self._send(403, {"error": "forbidden"})
-        path = self.path.split("?")[0]
-        if self._blocked(path):
-            return
-        if path == "/api/bye":            # the page was closed (sendBeacon): the server may stop after a short grace
-            STATE.life.goodbye((self._query().get("id") or ["?"])[0][:40])
-            return self._send(200, {"ok": True})
-        body = self._json()
-        if path == "/api/unlock":
-            return self._unlock(body)
-        if path == "/api/lock":           # sign out: the session token stops working at once
-            return self._lock()
-        if path == "/api/refresh":
-            return self._send(200, self._refresh())
-        if path == "/api/quick":
-            return self._send(200, self._refresh(["--quick"], jobs.QUICK_REFRESH_TIMEOUT_S))
-        if path == "/api/unusual_seen":
-            keys = body.get("keys")
-            return self._send(200, self._api_seen_add(keys if isinstance(keys, list) else []))
-        if path == "/api/ask":
-            return self._ask(body)
-        if path == "/api/cat/set":
-            return self._send(200, self._api_cat_set(body))
-        if path == "/api/cat/delete":
-            return self._send(200, self._api_cat_delete(body))
-        setup = {"/api/setup/source": self._api_setup_source, "/api/setup/asset": self._api_setup_asset, "/api/setup/balance": self._api_setup_balance,
-                 "/api/setup/answer": self._api_setup_answer, "/api/setup/test": self._api_setup_test}
-        if path in setup:
-            return self._send(200, setup[path](body))
-        self._send(404, {"error": "not found"})
+    @api_boundary()
+    def _api_refresh(self, body: dict[str, Any]) -> dict[str, Any]:
+        return self._refresh()
+
+    @api_boundary()
+    def _api_quick(self, body: dict[str, Any]) -> dict[str, Any]:
+        return self._refresh(["--quick"], jobs.QUICK_REFRESH_TIMEOUT_S)
+
+    def _api_unusual_seen(self, body: dict[str, Any]) -> dict[str, Any]:
+        keys = body.get("keys")
+        return self._api_seen_add(keys if isinstance(keys, list) else [])
 
     @api_boundary()
     def _api_setup_state(self) -> dict[str, Any]:
@@ -397,6 +437,35 @@ class RequestHandler(BaseHTTPRequestHandler):
         audit.record("setup_asset", str(body.get("action")))
         with open_data_db() as conn:
             return db_setup.asset_action(conn, body)
+
+    @api_boundary()
+    def _api_groceries(self) -> dict[str, Any]:
+        """Grocery orders (Knuspr) from the database tables groc_*, for the Groceries pop-up."""
+        with open_data_db() as conn:
+            groceries.import_pending(conn, paths.data_path("knuspr-import.json"))   # one-time carrier file: imported, then deleted
+            return groceries.overview(conn)
+
+    @api_boundary()
+    def _api_watch(self) -> dict[str, Any]:
+        """Shares you watch but do not own, with live prices (EUR) and the day change."""
+        return watchlist.prices()
+
+    @api_boundary()
+    def _api_watch_set(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Setup: find / add / delete one share to watch (a lookup of a name sends only that name to Yahoo)."""
+        audit.record("watch_" + str(body.get("action")))
+        return watchlist.action(body)
+
+    @api_boundary()
+    def _api_settings(self) -> dict[str, Any]:
+        """Setup: the few settings that can be changed here, with their current values."""
+        return watchlist.settings_state()
+
+    @api_boundary()
+    def _api_settings_set(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Setup: change one setting of config.json (checked against its allowed range)."""
+        audit.record("setting_set", str(body.get("key")))
+        return watchlist.settings_set(body)
 
     @api_boundary()
     def _api_setup_balance(self, body: dict[str, Any]) -> dict[str, Any]:

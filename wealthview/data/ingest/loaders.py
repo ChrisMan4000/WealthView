@@ -176,10 +176,18 @@ _DEPOT_DB_SQL = ("SELECT p.wkn, p.name, p.qty, p.price, p.value, p.gain, p.asof 
                  "WHERE s.active = 1 AND p.asof = (SELECT MAX(q.asof) FROM depot_positions q WHERE q.account_id = p.account_id)")
 
 
-def load_depot_db(ctx: RunContext, conn: sqlite3.Connection) -> Depot | None:
+_BANK_ONLY = " AND s.connector = 'fints' AND p.file_id IS NULL"       # v1.28: the snapshot WealthView built from the bank's own securities answer
+
+
+def has_bank_depot(conn: sqlite3.Connection) -> bool:
+    """True when a FinTS bank snapshot of the depot exists (see fints_sync.merge_holdings): it is then newer than any depot file"""
+    return conn.execute(_DEPOT_DB_SQL + _BANK_ONLY + " LIMIT 1").fetchone() is not None
+
+
+def load_depot_db(ctx: RunContext, conn: sqlite3.Connection, bank_only: bool = False) -> Depot | None:
     """The depot from the database (positions the automatic reader stored): the newest export of every depot of an active source; the
-    same security in two depots is added up. None when there are none."""
-    rows = conn.execute(_DEPOT_DB_SQL).fetchall()
+    same security in two depots is added up. None when there are none. bank_only: just the FinTS bank snapshot (v1.28)."""
+    rows = conn.execute(_DEPOT_DB_SQL + (_BANK_ONLY if bank_only else "")).fetchall()
     if not rows:
         return None
     merged: dict[str, ParsedPosition] = {}
