@@ -180,7 +180,7 @@
 
   /* ---------- single-company pop-up (private-equity start-ups and other single holdings) ---------- */
   const NF0 = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 });
-  /* Eternal Power / wiwin bond key data (shown only when config.json wiwin.terms exists) */
+  /* bond key data (shown only when config.json wiwin.terms exists) */
   function bondTerms(wi, w) {
     const t = wi.terms, esc = w.esc, ul = a => '<ul class="xs dim" style="margin:.2rem 0 0 1rem;padding:0">' + (a || []).map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>';
     const kv = [['Interest', String(t.rate).replace('.', ',') + ' % p.a.'], ['Bonus', esc(t.bonus || '-')], ['Paid in', esc(t.paid_in || '-')], ['Term ends', esc(t.end || '-')], ['Last payout', esc(t.final || '-')], ['ISIN', esc(t.isin || '-')], ['Type', esc(t.type || '-')], ['Issuer call', esc(t.call || '-')]];
