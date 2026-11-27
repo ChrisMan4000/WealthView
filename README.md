@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="assets/banner.png" alt="WealthView" width="720">
+  <img src="assets/banner.gif" alt="WealthView" width="720">
 </h1>
 
 <p align="center"><em>Your whole portfolio in one Iron-Man-style dashboard. Local-first, read-only, no cloud.</em></p>
