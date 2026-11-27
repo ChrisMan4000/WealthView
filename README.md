@@ -27,7 +27,7 @@ It is the sibling of [IronMan-JARVIS](https://github.com/ChrisMan4000/IronMan-JA
   <sub><a href="https://github.com/ChrisMan4000/WealthView/releases">all releases</a> &middot; SHA-256 below</sub>
 </p>
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-v1.31-0a84ff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-v1.32-0a84ff?style=flat-square">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square">
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows-0078d4?style=flat-square&logo=windows">
   <img alt="python" src="https://img.shields.io/badge/python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white">

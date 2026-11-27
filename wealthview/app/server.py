@@ -78,7 +78,7 @@ GET_ROUTES: dict[str, tuple[str, str | None]] = {
 POST_ROUTES: dict[str, tuple[str, str | None]] = {
     "/api/bye": ("_api_bye", None), "/api/unlock": ("_api_unlock", None), "/api/lock": ("_api_lock", None),
     "/api/refresh": ("_api_refresh", None), "/api/quick": ("_api_quick", None), "/api/unusual_seen": ("_api_unusual_seen", "unusual_seen_add"),
-    "/api/ask": ("_api_ask", None), "/api/cat/set": ("_api_cat_set", None), "/api/cat/delete": ("_api_cat_delete", None),
+    "/api/ask": ("_api_ask", None), "/api/ask/start": ("_api_ask_start", None), "/api/cat/set": ("_api_cat_set", None), "/api/cat/delete": ("_api_cat_delete", None),
     "/api/setup/source": ("_api_setup_source", None), "/api/setup/asset": ("_api_setup_asset", None),
     "/api/watch/set": ("_api_watch_set", None), "/api/settings/set": ("_api_settings_set", None),
     "/api/setup/balance": ("_api_setup_balance", None), "/api/setup/answer": ("_api_setup_answer", None), "/api/setup/test": ("_api_setup_test", None),
@@ -343,6 +343,11 @@ class RequestHandler(BaseHTTPRequestHandler):
         return ask.lm_status(config.load_config().get("ask", {}))
 
     @api_boundary()
+    def _api_ask_start(self, body: dict[str, Any]) -> dict[str, Any]:
+        """the ask box was clicked: start LM Studio now (it no longer starts with the dashboard)"""
+        return ask.start_lmstudio(config.load_config().get("ask", {}))
+
+    @api_boundary()
     def _live(self) -> dict[str, Any]:
         live = STATE.live
         with live.lock:
@@ -395,7 +400,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     @api_boundary()
     def _api_refresh(self, body: dict[str, Any]) -> dict[str, Any]:
-        return self._refresh()
+        return self._refresh(["--force-bank"] if body.get("force_bank") else None)       # the Refresh button asks the bank now, ignoring the 12 h wait
 
     @api_boundary()
     def _api_quick(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -525,7 +530,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             return {"seen": db_queries.unusual_seen_add(conn, keys)}
 
     def _refresh(self, args: list[str] | None = None, tmo: int = jobs.FULL_REFRESH_TIMEOUT_S) -> dict[str, Any]:
-        audit.record("refresh_quick" if args else "refresh_full")
+        audit.record("refresh_quick" if args and "--quick" in args else "refresh_full")
         return STATE.refresher.run(args, tmo)
 
 def runtime_check() -> None:

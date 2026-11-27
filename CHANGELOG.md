@@ -2,6 +2,9 @@
 
 The version number lives in one file, `version.js`, and is shown in the dashboard header, browser tab, intro, lock window and installer.
 
+## v1.32 (2026-11-27)
+- **LM Studio starts on click:** the local model (LM Studio + Gemma 4) is no longer started when WealthView opens. It starts only when you click the Ask box (new `POST /api/ask/start`; at most once a minute, skipped when it already runs). Opening the dashboard is now lighter when you do not use the chat.
+
 ## v1.31 (2026-11-24)
 - **Bond pop-up:** shows key terms (rate, term, payouts, issuer rights), expected payouts, risks and a firm-health box when terms are configured; the Alternatives box shows the next payout. Hidden when no terms are set.
 - **Groceries pop-up:** spending on online grocery orders, opened from the "Spending by category" box (needs imported order data; hidden otherwise).

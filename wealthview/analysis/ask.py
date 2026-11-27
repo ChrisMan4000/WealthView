@@ -6,10 +6,10 @@ any model (no tool-calling support needed). The SQL is never trusted: see run_qu
 """
 from __future__ import annotations
 from typing import Any, Callable
-import json, re, sqlite3, time, urllib.request, urllib.error
+import json, re, sqlite3, subprocess, sys, time, urllib.request, urllib.error
 import datetime as dt
 from pathlib import Path
-from ..common import config, safenet
+from ..common import config, paths, safenet
 from ..common.types.research import AskResult, ChatMessage, QueryResult
 
 LM_DEFAULT_URL = "http://127.0.0.1:1234/v1"      # LM Studio's local server
@@ -193,6 +193,31 @@ def lm_status(cfg: dict[str, Any]) -> dict[str, Any]:
         return dict(ok=True, model=pick_model(base, cfg.get("model", "auto"), cfg.get("model_match")), url=base)
     except _LM_ERRORS as e:
         return dict(ok=False, url=base, error="LM Studio is not reachable or has no model loaded (start LM Studio and load a model).", detail=str(e))
+
+
+_LM_START_AT = 0.0      # last time the page asked us to start LM Studio (a click on the ask box); one start per minute at most
+
+
+def start_lmstudio(cfg: dict[str, Any]) -> dict[str, Any]:
+    """The user clicked the ask box: start LM Studio's server + model in the background (start-lmstudio.ps1), unless it already answers.
+    Nothing starts at launch any more - only this click. Windows only (the script is PowerShell)."""
+    global _LM_START_AT
+    if cfg.get("start_lmstudio") is False:
+        return dict(ok=True, started=False, reason="off")
+    if lm_status(cfg).get("ok"):
+        return dict(ok=True, started=False, reason="running")
+    script = paths.BASE / "start-lmstudio.ps1"
+    if sys.platform != "win32" or not script.exists():
+        return dict(ok=False, started=False, reason="no script")
+    if time.time() - _LM_START_AT < 60:
+        return dict(ok=True, started=False, reason="starting")
+    _LM_START_AT = time.time()
+    try:
+        subprocess.Popen(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", str(script)],
+                         creationflags=0x08000000, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)      # CREATE_NO_WINDOW
+    except OSError as e:
+        return dict(ok=False, started=False, reason=str(e))
+    return dict(ok=True, started=True)
 
 
 def _start_messages(db_path: str | Path, question: object, history: object, today: dt.date | None, portfolio: str = "") -> list[ChatMessage]:

@@ -198,6 +198,9 @@
     document.addEventListener('mouseup', () => { if (pressed) { pressed = false; setTimeout(act, 0); } }, true);
     const act = () => box.classList.toggle('act', pressed || document.activeElement === inp || !!inp.value || A.hist.length > 0 || document.getElementById('log').classList.contains('on'));
     A.grow = grow; A.act = act;
+    /* LM Studio starts only when the ask box is clicked (not with the dashboard): once per page, again after a failed try */
+    let lmAsked = 0; const wakeLm = () => { const w = W(); if (!w || !w.S || w.S.mode !== 'real' || Date.now() - lmAsked < 60000) return; lmAsked = Date.now(); w.api('/api/ask/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then(() => { A.stAt = 0; }).catch(() => { }); };
+    box.addEventListener('mousedown', wakeLm); inp.addEventListener('focus', wakeLm);
     inp.addEventListener('input', grow); inp.addEventListener('focus', act); inp.addEventListener('blur', act);
     inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } e.stopPropagation(); });
     go.onclick = send; document.getElementById('logx').onclick = () => { document.getElementById('log').classList.remove('on'); act(); };
@@ -238,7 +241,7 @@
   async function send() {
     const w = W(), inp = document.getElementById('chatIn'), q = (inp.value || '').trim(); if (!q || A.busy || w.S.mode !== 'real') return;
     if (A.rec) A.rec.stop();
-    inp.value = ''; A.grow(); A.busy = true; sync(); addLog(`<div class="q">${esc(q)}</div><div class="a" id="pend"><span class="spinner"></span> thinking… (a local model can need a minute; web look-ups add a few seconds)</div>`);
+    inp.value = ''; A.grow(); A.busy = true; sync(); addLog(`<div class="q">${esc(q)}</div><div class="a" id="pend"><span class="spinner"></span> thinking…</div>`);
     let out;
     try { out = await w.api('/api/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question: q, history: A.hist }) }); }
     catch (e) { out = { ok: false, error: e.locked ? 'Locked - unlock your real numbers again.' : 'The server did not answer.' }; }
