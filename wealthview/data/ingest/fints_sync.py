@@ -305,6 +305,21 @@ def _depot_number(conn: sqlite3.Connection) -> str | None:
     return m.group(1) if m else None
 
 
+def _former(conn: sqlite3.Connection, skip: set[str]) -> list[Any]:
+    """positions held in any older depot snapshot (newest row per WKN) that are not in the current set"""
+    q = ("SELECT p.wkn,p.name,p.qty,p.price,p.value,p.gain FROM depot_positions p WHERE p.price IS NOT NULL AND p.asof="
+         "(SELECT MAX(q.asof) FROM depot_positions q WHERE q.wkn=p.wkn) GROUP BY p.wkn")
+    return [r for r in conn.execute(q).fetchall() if r[0] not in skip]
+
+
+def _by_price(b: dict[str, Any], cands: list[Any]) -> Any:
+    """the candidate whose old price is closest to the bank's price; none if the bank has no price, no candidate is within +-50 %, or it is a toss-up"""
+    if not b.get("price"):
+        return None
+    near = sorted(((abs(r[3] - b["price"]) / b["price"], i, r) for i, r in enumerate(cands) if r[3] and abs(r[3] - b["price"]) <= 0.5 * b["price"]))
+    return near[0][2] if near and (len(near) == 1 or near[0][0] < 0.5 * near[1][0]) else None
+
+
 def merge_holdings(conn: sqlite3.Connection, source_id: int, held: dict[str, Any] | None, now: dt.datetime, dry_run: bool = False) -> tuple[str | None, str | None]:
     """Today's depot from the bank's securities answer -> (note, warning). The bank sends only pieces, price and value (no ISIN, no name), so every bank
     row is matched to a position we already know BY ITS PIECES (the newest depot snapshot: a depot file or the last bank snapshot) and keeps that
@@ -315,7 +330,7 @@ def merge_holdings(conn: sqlite3.Connection, source_id: int, held: dict[str, Any
         return None, None
     prev = conn.execute("SELECT p.wkn,p.name,p.qty,p.price,p.value,p.gain FROM depot_positions p JOIN accounts a ON a.id=p.account_id WHERE a.kind='depot' "
                         "AND p.asof=(SELECT MAX(q.asof) FROM depot_positions q JOIN accounts b ON b.id=q.account_id WHERE b.kind='depot')").fetchall()
-    free, pairs, lost = list(prev), [], 0
+    free, pairs, lost, unknown, renamed = list(prev), [], 0, [], []
     for b in sorted(bank, key=lambda x: -(x.get("value") or 0)):
         cands = [r for r in free if abs((r[2] or 0) - b["pieces"]) < 1e-6]
         if len(cands) > 1 and b.get("price") is not None:       # same pieces twice: the closer old price decides
@@ -325,7 +340,16 @@ def merge_holdings(conn: sqlite3.Connection, source_id: int, held: dict[str, Any
             free.remove(cands[0])
             pairs.append((cands[0], b))
         else:
+            unknown.append(b)
+    for b in unknown:       # pieces changed (a buy) or a position held before: identify it by its price, closest old price wins (within +-50 %)
+        c = _by_price(b, free + _former(conn, {r[0] for r, _ in pairs} | {r[0] for r in free}))
+        if c is None:
             lost += 1
+            continue
+        if c in free:
+            free.remove(c)
+        pairs.append(((c[0], c[1], c[2], c[3], None, None), b))
+        renamed.append(c[1] or c[0])
     if lost or not pairs:
         return None, (f"depot from the bank NOT used: {lost or len(bank)} of {len(bank)} bank positions match no known position by pieces "
                       "(bought or sold something?) - export a fresh 'Depotbestand' from GLS into the DATA folder")
@@ -336,7 +360,7 @@ def merge_holdings(conn: sqlite3.Connection, source_id: int, held: dict[str, Any
         cost = (r[4] - r[5]) if r[4] is not None and r[5] is not None else None
         gain = round(val - cost, 2) if cost is not None else None
         rows.append((r[0], r[1], pcs, price, val, gain, round(gain / cost * 100, 2) if gain is not None and cost else None))
-    note = f" · depot from the bank: {len(rows)} positions" + (f", {len(free)} sold ({', '.join((r[1] or r[0]) for r in free)})" if free else "")
+    note = f" · depot from the bank: {len(rows)} positions" + (f", new pieces matched by price: {', '.join(renamed)} (cost unknown, no gain shown)" if renamed else "") + (f", {len(free)} sold ({', '.join((r[1] or r[0]) for r in free)})" if free else "")
     if not dry_run:
         acc = db_accounts.account_for(conn, source_id, _depot_number(conn) or "depot", "Depot", "depot")
         conn.execute("DELETE FROM depot_positions WHERE account_id=?", (acc,))       # the bank account holds only its newest snapshot

@@ -1,14 +1,14 @@
 """WealthView server lifetime: it runs only while a browser tab is open.
 
 The page sends a heartbeat every 10 s (/api/hb) and a goodbye when it is closed (/api/bye). The server ends itself when no page
-is left (grace 12 s after a goodbye so that a reload does not stop it, 60 s without heartbeats after a crash, 5 min if no page
+is left (grace 3 s after a goodbye so that a reload does not stop it, 60 s without heartbeats after a crash, 5 min if no page
 ever connects). A sleeping PC does not count as "gone". config.json "auto_stop": false keeps the server running always.
 """
 from __future__ import annotations
 import os, threading, time
 from ..common import safenet
 
-HB_TIMEOUT, BYE_GRACE, FIRST_GRACE = 60, 12, 300
+HB_TIMEOUT, BYE_GRACE, FIRST_GRACE = 60, 3, 300
 MAX_CLIENTS = 50          # most browser pages the heartbeat table remembers (/api/hb is public, so it must not grow without limit)
 SLEEP_GAP_S = 30          # a pause between two watchdog checks longer than this means the PC was asleep
 

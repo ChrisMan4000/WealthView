@@ -1,5 +1,6 @@
 """Totals and KPIs of the dashboard: asset groups, liabilities, net worth, last-12-month flows, runway and the merchant logo keys."""
 from __future__ import annotations
+from datetime import date, timedelta
 from typing import Any
 from collections.abc import Mapping
 from ..common import config
@@ -92,6 +93,10 @@ def apply_flow_kpis(g: GlsBlock | None, flows: FlowModel | None) -> None:
         g["income_sources"] = flows["income_sources"]
         g["merchants"] = flows["top_spenders"]["y1"][:12]
         g["bookings"] = group_bookings(all_bookings or [])
+        # flat list for the "See bookings" pop-up: [date, amount, category, name, account kind], newest first, last 366 days
+        cut = (date.today() - timedelta(days=366)).isoformat()
+        g["bookings_flat"] = [[it["d"], it["v"], it.get("c"), merchant_display(it["n"])[0], it.get("src")]
+                              for it in sorted(all_bookings or [], key=lambda x: x["d"] or "", reverse=True) if (it["d"] or "") >= cut][:4000]
         for it in g["recent"]:
             shown, dm = merchant_display(it["n"])
             if dm:

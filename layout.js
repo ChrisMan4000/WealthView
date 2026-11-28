@@ -22,14 +22,15 @@
     { id: 'examplefund', col: '#c4', needs: ['privateEquity', 'examplefund'], dom: ['pWF'] },
     { id: 'crypto', col: '#c4', needs: ['crypto'], dom: ['pCB'] },
     { id: 'alt', col: '#c4', any: ['wiwin', 'loan'], dom: ['pAlt'] },
+    { id: 'insurance', col: '#c4', needs: ['insurance'], dom: ['pIns'] },       // v1.33: active insurances (folder read-only, new files only)
     { id: 'typed', col: '#c4', needs: ['typed'], dom: ['pTyped'] },      // v1.20: the house, loans, funds and other investments typed in under Setup
     { id: 'chat', col: null, needs: ['chat'], dom: [] },            // the ask bar: fixed under the grid, not inside a column
     { id: 'empty', col: '#center', dom: ['pEmpty'], only: true }     // never picked by the rules: shown alone when there is nothing to show
   ];
   const COLUMNS = ['#c5', '#c2', '#center', '#c1', '#c4'];            // left to right on the ultra-wide screen (v1.15: 5, 2, 3, 1, 4)
   const CLASSES = ['realEstate', 'securities', 'privateEquity', 'cash', 'crypto'];
-  const MODULES = ['examplefund', 'wiwin', 'loan', 'apartment'];
-  const LEGACY = { edition: 'private', tier: 'ultrawide', asset_classes: CLASSES.slice(), sources: [], modules: { examplefund: true, wiwin: true, loan: true, apartment: true }, tax_country: 'DE', home: {}, chat: true, jarvis_url: null };
+  const MODULES = ['examplefund', 'wiwin', 'loan', 'apartment', 'insurance'];
+  const LEGACY = { edition: 'private', tier: 'ultrawide', asset_classes: CLASSES.slice(), sources: [], modules: { examplefund: true, wiwin: true, loan: true, apartment: true, insurance: true }, tax_country: 'DE', home: {}, chat: true, jarvis_url: null };
 
   /* tiers = the responsive rules of wealthview.html: wider than 22:10 = fixed 5-column screen; otherwise stacked with 4 columns,
      2 columns up to 1900 px wide and 1 column up to 900 px */

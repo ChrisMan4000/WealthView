@@ -248,14 +248,14 @@
   /* colour accent per group of boxes (v1.06): sec = securities, red = money out, wf = Example Fund, cb = Coinbase, alt = alternatives, tip = suggestions */
   /* boxes that stay readable when the privacy blur is on (v1.06): securities allocation, spending, top pay, recent + unusual bookings; the cash-flow CHART (#flc) is exempt too, its KPI tiles are not */
   const NB = { pAlloc: 1, pSpend: 1, pTop: 1, pRec: 1, pUnusual: 1 };
-  const GRP = { pDepot: 'sec', pAlloc: 'sec', pTop: 'red', pSpend: 'red', pRec: 'red', pWF: 'wf', pCB: 'cb', pAlt: 'alt', pTips: 'tip', pUnusual: 'tip', pTime: 'tip' };
+  const GRP = { pDepot: 'sec', pAlloc: 'sec', pTop: 'red', pSpend: 'red', pRec: 'red', pWF: 'wf', pCB: 'cb', pAlt: 'alt', pTips: 'tip', pUnusual: 'tip', pTime: 'tip', pIns: 'alt' };
   function panel(id, title, bd, body, o) {
     o = o || {}; const hOn = !!(o.heat && S.heatOn[id]);
     if (o.heat) POST.push(() => {
       const b = $('#' + id + ' .hmb'); if (b) b.onclick = e => { e.stopPropagation(); S.heatOn[id] = !S.heatOn[id]; renderAll(); };
       const root = hOn && $('#' + id + ' .hroot'); if (root) { root.addEventListener('click', e => e.stopPropagation()); HEATCTX = { root }; try { o.heat(); } catch (e) { console.error(e); } finally { HEATCTX = null; } }
     });
-    return `<section class="bx ${o.cls || ''}${NB[id] ? ' nb' : ''}" id="${id}"${GRP[id] ? ' data-grp="' + GRP[id] + '"' : ''} style="${o.style || ''}"><div class="bg"></div><div class="bh"><div class="bt">${title}</div>${o.heat ? `<div style="display:flex;gap:.4rem;align-items:center"><button class="hmb ${hOn ? 'on' : ''}" title="${hOn ? 'Back to the chart' : 'Show as heatmap'}">${hOn ? '◧ Chart' : '▦ Heat'}</button>${bd || ''}</div>` : (bd || '')}</div><div class="bb ${o.sc ? 'sc' : ''}">${hOn ? '<div class="hroot" style="flex:1;min-height:0;display:flex;flex-direction:column"></div>' : body}</div></section>`;
+    return `<section class="bx ${o.cls || ''}${NB[id] ? ' nb' : ''}" id="${id}"${GRP[id] ? ' data-grp="' + GRP[id] + '"' : ''} style="${o.style || ''}"><div class="bg"></div><div class="bh"><div class="bt">${title}</div>${o.heat ? `<div style="display:flex;gap:.4rem;align-items:center">${o.pre || ''}<button class="hmb ${hOn ? 'on' : ''}" title="${hOn ? 'Back to the chart' : 'Show as heatmap'}">${hOn ? '◧ Chart' : '▦ Heat'}</button>${bd || ''}</div>` : (bd || '')}</div><div class="bb ${o.sc ? 'sc' : ''}">${hOn ? '<div class="hroot" style="flex:1;min-height:0;display:flex;flex-direction:column"></div>' : body}</div></section>`;
   }
   const nwRaw = d => ({ axis: d.axis, kind: 'stock', stacked: true, series: CLS.map(k => ({ n: k, c: CCOL[k], v: (d.nw[k] || []).map(v => v == null ? null : v), type: 'area' })) });
 
@@ -396,8 +396,29 @@
     const per = S.topPer || 'y1', list = (f.top_spenders[per] || []).slice(0, 14), mx = Math.max(1, ...list.map(x => x.v)), tot = per === 'y1' ? f.expense.slice(-13, -1).reduce((a, b) => a + b, 0) : f.expense.reduce((a, b) => a + b, 0);
     POST.push(() => { $$('#pTop .tr[data-m]').forEach(r => r.onclick = () => openMerchant(list[+r.dataset.m])); $$('#pTop [data-p]').forEach(b => b.onclick = e => { e.stopPropagation(); S.topPer = b.dataset.p; renderAll(); }); });
     const rows = list.map((m, i) => `<div class="tr" data-m="${i}" style="grid-template-columns:1rem 1.9rem minmax(0,1.5fr) 4.6rem minmax(0,.9fr) 2.4rem"><span class="dim xs">${i + 1}</span>${logoFor(m.n)}<span class="nm"><span class="t">${esc(m.n)}<small>${esc(m.cat)} · ${m.tx}×</small></span></span><span class="r wh">${A(m.v)}</span><span><span class="bar"><i style="width:${m.v / mx * 100}%"></i></span></span><span class="r dim xs">${(m.v / (tot || 1) * 100).toFixed(1).replace('.', ',')}%</span></div>`).join('');
-    return panel('pTop', 'Top pay <b>//</b> where your money goes', d.mode === 'demo' ? badge('demo', 'Demo') : srcBadge('gls', d), `<div style="display:flex;gap:.4rem;margin-bottom:.35rem"><button data-p="y1" class="${per === 'y1' ? 'on' : ''}">Last 12 months</button><button data-p="all" class="${per === 'all' ? 'on' : ''}">All time</button><span class="xs dim" style="margin-left:auto;align-self:center">${per === 'y1' ? '12 m' : 'since ' + mlab(f.months[0])} total spend ${A(tot)}</span></div><div class="tbl fill" style="overflow:auto">${rows}</div><div class="xs dim" style="margin-top:.3rem">Click a company for its monthly history. Internal transfers and investments are not counted.</div>`, { style: 'flex:3.3', heat: heatTop });
+    return panel('pTop', 'Top pay <b>//</b> where your money goes', d.mode === 'demo' ? badge('demo', 'Demo') : srcBadge('gls', d), `<div style="display:flex;gap:.4rem;margin-bottom:.35rem"><span class="xs dim" style="margin-left:auto;align-self:center">${per === 'y1' ? '12 m' : 'since ' + mlab(f.months[0])} total spend ${A(tot)}</span></div><div class="tbl fill" style="overflow:auto">${rows}</div><div class="xs dim" style="margin-top:.3rem">Click a company for its monthly history. Internal transfers and investments are not counted.</div>`, { style: 'flex:3.3', heat: heatTop, pre: `<button data-p="y1" class="${per === 'y1' ? 'on' : ''}">Last 12 months</button><button data-p="all" class="${per === 'all' ? 'on' : ''}">All time</button>` });
   }
+
+  /* v1.32: all GLS bookings of the last 7 days / month / year (flattened from data.gls.bookings; demo mode falls back to the recent list) */
+  function openAllBookings(per, kind, ttl) {
+    const d = S.D, g = d.gls || {}; let all = (g.bookings_flat || []).filter(r => !kind || r[4] === kind);
+    if (!all.length && !g.bookings_flat) all = (g.recent || []).filter(r => !kind || r.src === kind).map(r => [r.d, r.v, r.c, r.n]);
+    all.sort((a, b) => String(b[0]).localeCompare(String(a[0])));
+    const days = { w: 7, m: 30, y: 365 }, per0 = days[per] ? per : 'w';
+    modalShell(ttl || 'GLS bookings', d.mode === 'demo' ? badge('demo', 'Demo') : srcBadge('gls', d));
+    const tools = $('#mtools'), body = $('#mbody');
+    let sgn = 0;   /* 0 = all, 1 = credits only, -1 = deductions only */
+    const draw = p => {
+      const cut = new Date(Date.now() - days[p] * 864e5).toISOString().slice(0, 10), list = all.filter(r => String(r[0]) >= cut && (!sgn || (sgn > 0 ? r[1] > 0 : r[1] < 0)));
+      const out = list.filter(r => r[1] < 0).reduce((a, r) => a + r[1], 0), inn = list.filter(r => r[1] > 0).reduce((a, r) => a + r[1], 0);
+      tools.innerHTML = [['w', 'Last 7 days'], ['m', 'Last month'], ['y', 'Last year']].map(([k, t]) => `<button data-p="${k}" class="${p === k ? 'on' : ''}">${t}</button>`).join('') + '<span class="sep"></span>' + [[0, 'All'], [1, 'Credits'], [-1, 'Deductions']].map(([k, t]) => `<button data-s="${k}" class="${sgn === k ? 'on' : ''}">${t}</button>`).join('');
+      $$('#mtools button').forEach(b => b.onclick = () => { if (b.dataset.s != null) sgn = +b.dataset.s; draw(b.dataset.p || p); });
+      const rows = list.slice(0, 500).map(r => `<div class="tr" style="grid-template-columns:4.5rem minmax(0,1fr) auto"><span class="dim xs">${dshort(r[0])}</span><span class="nm"><span class="t">${esc(r[3])}<small>${esc(r[2] || '')}</small></span></span><span class="r ${r[1] < 0 ? '' : 'pos'}">${A(r[1])}</span></div>`).join('') || '<div class="empty">No bookings in this time.</div>';
+      body.innerHTML = `<div class="stats"><div>Bookings<b>${list.length}</b></div><div>Out<b>${A(Math.abs(out))}</b></div><div>In<b>${A(inn)}</b></div><div>Net<b class="${cl(out + inn)}">${A(out + inn)}</b></div></div><div class="tbl" style="max-height:65vh;overflow:auto">${rows}</div>${list.length > 500 ? `<p class="xs dim">Newest 500 of ${list.length} shown.</p>` : ''}`;
+    };
+    draw(per0);
+  }
+  const seeBtn = '<button class="hmb" data-seebk title="All GLS bookings: last 7 days / month / year">See bookings</button>';
   /* history with one company: every booking we have for that name (data.gls.bookings; demo mode falls back to the recent list) */
   function openBookings(name) {
     const d = S.D, g = d.gls || {}, list = ((g.bookings || {})[name] || (g.recent || []).filter(r => r.n === name).map(r => [r.d, r.v, r.c])).slice().sort((a, b) => String(b[0]).localeCompare(String(a[0])));
@@ -456,7 +477,7 @@
     c.onclick = () => infoModal('Which files need fresh data?', remRows(r, d) + '<p class="xs dim">Drop the new files into the usual folders - WealthView imports them by itself within about a minute.</p>');
   }
   function pTips(d) {
-    const T = tipsFor(d).concat((window.WVA && WVA.tipItems(d)) || []).concat((window.WVI && WVI.tipItems(d)) || []), ord = { warn: 0, idea: 1, info: 2 }; T.sort((a, b) => (ord[a.l] - ord[b.l])); const rt = remTip(d); if (rt) T.unshift(rt);
+    const T = tipsFor(d).concat((window.WVA && WVA.tipItems(d)) || []).concat((window.WVI && WVI.tipItems(d)) || []), ord = { warn: 0, idea: 1, info: 2 }; T.sort((a, b) => (ord[a.l] - ord[b.l])); const rt = remTip(d); if (rt) T.unshift(rt); const it = window.WVINS && WVINS.tipItem(d); if (it) T.unshift(it);
     POST.push(() => { $$('#pTips .tip2').forEach(t => t.onclick = () => t.classList.toggle('open')); const ab = $('#bAnalysis'); if (ab) ab.onclick = e => { e.stopPropagation(); WVA.openAnalysis(S.D); }; const sy = $('#sysHead'); if (sy) sy.onclick = () => $('#sysBody').classList.toggle('open'); });
     const al = (d.alerts || []).slice().sort((a, b) => (/DATA GAP/.test(b.text) - /DATA GAP/.test(a.text))).slice(0, 7).map(a => `<div style="margin:.25rem 0;font-size:max(var(--minfs,0px),0.792rem)"><span class="${a.level === 'warn' ? 'or' : 'dim'}">${a.level === 'warn' ? '▲' : '●'}</span> ${/DATA GAP/.test(a.text) ? '<b class="or">' + esc(a.text) + '</b>' : esc(a.text)}</div>`).join('') || '<div class="dim sm">No alerts.</div>';
     const nWarn = (d.alerts || []).filter(a => a.level === 'warn').length;
@@ -513,10 +534,10 @@
   function cryptoRaw(d) { const hs = d.crypto.holdings.filter(h => h.hist); return { axis: d.axis, kind: 'stock', stacked: true, series: hs.map((h, i) => ({ n: h.currency, c: PAL[i % PAL.length], v: h.hist.map((p, i) => p == null || (h.first_buy && d.axis[i] < h.first_buy.slice(0, 7)) ? null : p * h.amount), type: 'area' })) }; }
   function pAlt(d) {
     const wi = d.wiwin, L = d.loan;
-    if (!wi) return L ? panel('pAlt', 'Loans', '', `<div class="tr" id="altL" style="grid-template-columns:1fr auto"><span class="nm"><span class="t">Loan from ${esc(L.lender)}<small>${eur(L.monthly)} / month · paid off ${mlabLong(L.payoff)}</small></span></span><span class="r neg">−${A(L.balance)}</span></div>`, { style: 'flex:1.1' }) + (POST.push(() => { const l = $('#altL'); if (l) l.onclick = openLoan; }), '') : '';
+    if (!wi) return L ? panel('pAlt', 'Loans', '', `<div class="tr" id="altL" style="grid-template-columns:1fr auto"><span class="nm"><span class="t">Loan from ${esc(L.lender)}<small>${eur(L.monthly)} / month · paid off ${mlabLong(L.payoff)}</small></span></span><span class="r neg">−${A(L.balance)}</span></div>`, { style: 'flex:0 0 auto' }) + (POST.push(() => { const l = $('#altL'); if (l) l.onclick = openLoan; }), '') : '';
     POST.push(() => { $('#altW').onclick = () => window.WVA ? WVA.companyModal({ name: wi.issuer, wiwin: wi, web: wi.web || '', blurb: 'Crowd investment, counted as private equity. No live price exists for stakes like this, so it is carried at cost (' + (wi.note || 'at cost') + '). Tell me the current value or repayments to update config.json.' }) : infoModal('wiwin investment', `<div class="stats"><div>Issuer<b>${esc(wi.issuer)}</b></div><div>Platform<b>${esc(wi.platform)}</b></div><div>Invested<b>${A(wi.invested)}</b></div><div>Valuation<b>${esc(wi.note || 'at cost')}</b></div></div><p class="dim sm">wiwin counts as <b>Private equity</b> in the asset classes (together with Example Fund). No live price exists for crowd-investing stakes, so it is carried at cost. Tell me the current value or repayments to update it in config.json.</p>`, srcBadge('wiwin', d)); const l = $('#altL'); if (l) l.onclick = openLoan; });
     const loan = L ? `<div class="tr" id="altL" style="grid-template-columns:2.4rem 1fr auto;margin-top:.2rem"><span>${iconLg('loan')}</span><span class="nm"><span class="t">Loan from ${esc(L.lender)}<small>${eur(L.monthly)} / month · paid off ${mlabLong(L.payoff)}</small><span class="bar" style="display:block;margin-top:.2rem"><i style="width:${L.repaid / L.principal * 100}%;background:#6fbf95"></i></span></span></span><span class="r neg">−${A(L.balance)}</span></div>` : '';
-    return panel('pAlt', 'Alternatives <b>//</b> private holdings & loans', srcBadge('wiwin', d), `<div class="tr" id="altW" style="grid-template-columns:2.4rem 1fr auto"><span>${logo('wiwin', 'wiwin', true)}</span><span class="nm"><span class="t">${esc(wi.issuer)}<small>${esc(wi.platform)} · ${esc(wi.note || 'at cost')} · counts as private equity${nextPay(wi)}</small></span></span><span class="r wh">${A(wi.invested)}</span></div>${loan}<div class="xs dim" style="margin-top:.4rem">Private equity total (Example Fund + wiwin): <b class="wh">${A(classValues(d)['Private equity'])}</b></div>`, { style: 'flex:1.1' });
+    return panel('pAlt', 'Alternatives <b>//</b> private holdings & loans', srcBadge('wiwin', d), `<div class="tr" id="altW" style="grid-template-columns:2.4rem 1fr auto"><span>${logo('wiwin', 'wiwin', true)}</span><span class="nm"><span class="t">${esc(wi.issuer)}<small>${esc(wi.platform)} · ${esc(wi.note || 'at cost')} · counts as private equity${nextPay(wi)}</small></span></span><span class="r wh">${A(wi.invested)}</span></div>${loan}<div class="xs dim" style="margin-top:.4rem">Private equity total (Example Fund + wiwin): <b class="wh">${A(classValues(d)['Private equity'])}</b></div>`, { style: 'flex:0 0 auto' });
   }
   /* v1.20: what you typed in under Setup (house, loans, funds, other investments, balances). Shown only when something was typed in. */
   function pTyped(d) {
@@ -556,8 +577,8 @@
   }
   function pRecent(d) {
     const rc = (d.gls && d.gls.recent || []).slice(0, 10).map(r => `<div class="tr rb" data-n="${esc(r.n)}" title="Click for the booking history with ${esc(r.n)}" style="grid-template-columns:3.2rem 1.7rem minmax(0,1fr) auto;cursor:pointer;padding:.22rem .2rem"><span class="dim xs">${dshort(r.d)}</span>${logo(r.lg || 'none:' + r.n, r.n)}<span class="nm"><span class="t">${esc(r.n)}<small>${esc(r.c)}</small></span></span><span class="r ${r.v < 0 ? '' : 'pos'}">${A(r.v)}</span></div>`).join('') || '<div class="empty">No bookings.</div>';
-    POST.push(() => $$('#pRec .tr.rb').forEach(r => r.onclick = () => openBookings(r.dataset.n)));
-    return panel('pRec', 'Recent bookings', d.mode === 'demo' ? badge('demo', 'Demo') : srcBadge('gls', d), `<div class="tbl" style="overflow:auto">${rc}</div>`, { style: 'flex:2' });
+    POST.push(() => { $$('#pRec .tr.rb').forEach(r => r.onclick = () => openBookings(r.dataset.n)); $$('#pRec [data-seebk]').forEach(b => b.onclick = e => { e.stopPropagation(); openAllBookings('w'); }); });
+    return panel('pRec', 'Recent bookings', seeBtn + (d.mode === 'demo' ? badge('demo', 'Demo') : srcBadge('gls', d)), `<div class="tbl" style="overflow:auto">${rc}</div>`, { style: 'flex:2' });
   }
   // Links from outside (news feeds, sources) are only used when they are http(s): a javascript: link would run in this page.
   function safeUrl(u) { return /^https?:\/\//i.test(String(u || '').trim()) ? String(u).trim() : ''; }
@@ -992,7 +1013,7 @@
     };
     $('#ppq').oninput = draw; draw();
   }
-  function openAcct(title, defs) { const d = S.D; openTS({ title: title + ' · balance history', badge: srcBadge('gls', d), type: 'line', make: () => acctRaw(d, defs) }); }
+  function openAcct(title, defs) { const d = S.D; openTS({ title: title + ' · balance history', badge: seeBtn + srcBadge('gls', d), type: 'line', make: () => acctRaw(d, defs), after: () => { const b = $('#mdl [data-seebk]'); if (b) b.onclick = () => openAllBookings('w', defs[0][0], title + ' · bookings'); } }); }
   function openFlow() { const d = S.D; openTS({ title: 'Income, expenses and savings', badge: d.mode === 'demo' ? badge('demo', 'Demo') : srcBadge('gls', d), type: 'bar', make: () => flowRaw(d), extra: () => `<p class="xs dim">Internal transfers, credit-card settlements and securities purchases are not counted as spending. Items of ${nf0.format(d.flows.oneoff_threshold)} € or more are treated as one-offs and shown separately.</p>` }); }
   function openSpend() { const d = S.D; openTS({ heat: heatSpend, title: 'Spending by category · monthly', stacked: true, type: 'bar', badge: d.mode === 'demo' ? badge('demo', 'Demo') : srcBadge('gls', d), make: () => spendRaw(d), extra: () => `<p class="xs dim">Categories come from WealthView's own rules (keywords in payee and purpose). Click a category on the dashboard for its merchants. Add your own rules in config.json → category_rules.</p>` }); }
   function openCat(c) { const d = S.D, tm = (d.flows.top_merchants || {})[c] || []; openTS({ title: 'Category: ' + c, type: 'bar', badge: d.mode === 'demo' ? badge('demo', 'Demo') : srcBadge('gls', d), make: () => spendRaw(d, c), extra: () => `<div class="xs dim" style="letter-spacing:.12em">TOP PAYEES · LAST 12 MONTHS</div>` + (tm.length ? tm.map(m => `<div class="tr" style="grid-template-columns:1fr auto;cursor:default"><span>${esc(m.n)}</span><span class="r wh">${A(m.v)}</span></div>`).join('') : '<div class="dim sm">–</div>') }); }
@@ -1033,7 +1054,7 @@
       depot: pDepot, alloc: pAlloc, top: pTop, spend: pSpend, flow: pFlow,
       ring: d => `<div id="ringWrap" style="height:43.4rem;flex:none">${ringHTML(d)}${wings(d)}</div><div class="kpis" id="kpiRow" style="grid-template-columns:${kpiCols(d)}">${kpiRow(d)}</div>`,
       gross: pGross, time: d => (window.WVI && WVI.pTime(d)) || '', map: pMap,
-      examplefund: pWF, crypto: pCB, alt: pAlt, typed: pTyped, sources: pSrc, tips: pTips, unusual: d => (window.WVA && WVA.pUnusual(d)) || '', recent: pRecent,
+      examplefund: pWF, crypto: pCB, alt: pAlt, insurance: d => (window.WVINS && WVINS.pIns(d)) || '', typed: pTyped, sources: pSrc, tips: pTips, unusual: d => (window.WVA && WVA.pUnusual(d)) || '', recent: pRecent,
       empty: d => panel('pEmpty', 'Nothing to show yet', '', '<div class="empty">No asset classes are set up in this installation. Press Setup at the top to add your banks, investments and crypto, or to type in a house, a loan or a fund.</div>', { style: 'flex:1' })
     };
     const prof = S.profile || (window.WVL && WVL.LEGACY), vp = { w: window.innerWidth, h: window.innerHeight };
@@ -1054,7 +1075,7 @@
     $$('#ringSvg .seg').forEach(p => p.onclick = () => openClass(p.dataset.k));
     $$('.wing .w').forEach(w => w.onclick = () => openClass(w.dataset.k));
     $$('#kpiRow .kp').forEach(k => k.onclick = () => openClass(k.dataset.k));
-    $$('.dseg').forEach(() => 0); const nl = $('#netLine'); if (nl) nl.onclick = openNet; gapChip(d); updChip(d);
+    $$('.dseg').forEach(() => 0); const nl = $('#netLine'); if (nl) nl.onclick = openNet; gapChip(d); updChip(d); if (window.WVINS) WVINS.chip(d);
     fitRing(); setHdrRanges(d); setStatus(); lockBtn(); $$('#ctl [data-r]').forEach(b => b.classList.toggle('on', b.dataset.r === S.range)); $('#bGran').textContent = S.gran === 'M' ? 'Monthly' : 'Yearly';
   }
   function setHdrRanges(d) {
@@ -1084,12 +1105,13 @@
   }
   function lockModal() {
     modalShell('Real numbers', '', 'fit'); const m = $('#mdl'); m.style.width = '28rem';
-    $('#mbody').innerHTML = `<div id="lock" style="text-align:center"><div class="dim sm">Enter your password to load your real data.</div><input id="pinIn" type="password" autocomplete="off" aria-label="Password" maxlength="1024" spellcheck="false"><div><button id="unlockBtn" type="button">Unlock</button></div><div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, '⌫', 0, '✓'].map(k => `<button data-k="${k}">${k}</button>`).join('')}</div><div id="lockMsg" class="sm or"></div><div class="hint">Enter confirms</div><div class="hint" style="margin-top:.5rem">WealthView ${window.WV_VERSION || ''}</div></div>`; frameAll($('#modal'));
+    $('#mbody').innerHTML = `<div id="lock" style="text-align:center"><div class="dim sm">Enter your password to load your real data.</div><input id="pinIn" type="password" autocomplete="off" aria-label="Password" maxlength="1024" spellcheck="false"><div><button id="unlockBtn" type="button">Unlock</button></div><div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, '⌫', 0, '✓'].map(k => `<button data-k="${k}">${k}</button>`).join('')}</div><div id="lockMsg" class="sm or"></div><div class="hint">4-digit PIN unlocks at once · Enter confirms</div><div class="hint" style="margin-top:.5rem">WealthView ${window.WV_VERSION || ''}</div></div>`; frameAll($('#modal'));
     const inp = $('#pinIn');
     let busy = false; const ub = $('#unlockBtn');
     const go = async () => { let pin = inp.value; if (busy || !pin) return; busy = true; ub.disabled = true; ub.setAttribute('aria-busy', 'true'); $('#lockMsg').style.color = ''; $('#lockMsg').innerHTML = '<span class="spinner"></span>checking…'; try { const r = await (await fetch('/api/unlock', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pin }) })).json(); pin = ''; if (r.ok) { S.token = r.token; SS.set('wvtok', r.token); await loadReal(false, true); } else { $('#lockMsg').textContent = r.error || 'wrong password'; inp.classList.add('shake'); setTimeout(() => inp.classList.remove('shake'), 400); inp.value = ''; inp.focus(); } } catch (e) { pin = ''; $('#lockMsg').textContent = server ? 'Server not reachable.' : 'Open WealthView from its desktop shortcut (it starts the local server).'; } finally { busy = false; ub.disabled = false; ub.removeAttribute('aria-busy'); } };
-    $$('#lock .pad button').forEach(b => b.onclick = () => { const r = lockInput(inp.value, b.dataset.k); inp.value = r.value; if (r.submit) go(); else inp.focus(); });
+    $$('#lock .pad button').forEach(b => b.onclick = () => { const r = lockInput(inp.value, b.dataset.k); inp.value = r.value; if (r.submit || /^\d{4}$/.test(r.value)) go(); else inp.focus(); });
     ub.onclick = go;
+    inp.oninput = () => { if (/^\d{4}$/.test(inp.value)) go(); };    /* 4 digits typed: unlock at once, no Enter needed */
     inp.onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); go(); } };
     /* an older version of this screen used a window-level key listener: make sure none is left behind */
     if (window.__wvLockKey) { window.removeEventListener('keydown', window.__wvLockKey, true); window.__wvLockKey = null; }
@@ -1116,7 +1138,7 @@
   async function loadReal(refresh, first) {
     modalShell('Loading your real numbers', ''); $('#mbody').innerHTML = `<div class="sm" style="padding:2rem 0;text-align:center"><span class="spinner"></span><span id="ldm">${refresh ? 'Re-reading your files, quotes and Coinbase… (20–40 s)' : 'Loading…'}</span></div>`;
     try {
-      if (refresh) { const r = await api('/api/refresh', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }); if (!r.ok) { $('#ldm').textContent = 'Refresh problem: ' + (r.log || '') + ' (showing the last data if available)'; await new Promise(z => setTimeout(z, 1500)); } }
+      if (refresh) { const r = await api('/api/refresh', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"force_bank":true}' }); if (!r.ok) { $('#ldm').textContent = 'Refresh problem: ' + (r.log || '') + ' (showing the last data if available)'; await new Promise(z => setTimeout(z, 1500)); } }
       const d = await api('/api/real'); if (d.error) throw new Error(d.error);
       try { const lg = await api('/api/src_logos'); if (lg && !lg.error) window.SRC_LOGOS = lg; } catch (e) { /* logos are optional: missing ones are fetched one by one */ }
       try { const pr = await api('/api/profile'); if (pr && !pr.error) S.profile = pr; } catch (e) { if (e.locked) throw e; /* no profile: the legacy layout stays */ }
@@ -1132,7 +1154,7 @@
     catch (e) { if (e.locked) { toDemo(); lockModal(); } } finally { S.quickBusy = false; setStatus(); }
   }
   function playIntro(speed) {
-    if (!window.WVIntro) return; const d = S.D, v = classValues(d), tot = CLS.reduce((s, k) => s + v[k], 0) || 1, dp = d.depot, cb = d.crypto;
+    if (!window.WVIntro || /[?&]shot=1/.test(location.search)) return; const d = S.D, v = classValues(d), tot = CLS.reduce((s, k) => s + v[k], 0) || 1, dp = d.depot, cb = d.crypto;
     const lines = [S.mode === 'demo' ? 'DEMO DATA ... LOADED' : 'GLS BOOKINGS ... ' + ((d.gls && d.gls.n_tx) || (d.flows ? d.flows.months.length + ' MONTHS' : 'OK')), cb ? 'COINBASE ... ' + (S.mode === 'demo' ? 'DEMO' : 'LIVE') : 'COINBASE ... OFFLINE', dp ? 'QUOTES ... ' + dp.n_live + '/' + dp.n_total : 'QUOTES ... OFFLINE', d.examplefund ? 'EXAMPLE FUND ... ' + (d.examplefund.fund && d.examplefund.fund.quarter || 'OK') : 'EXAMPLE FUND ... OK', 'PORTFOLIO ... ONLINE'];
     try { window.WVIntro.play({ speed, lines }); } catch (e) { console.error(e); }
   }

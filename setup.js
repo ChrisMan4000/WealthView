@@ -7,7 +7,7 @@
   const W = () => window.WV;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const JSONH = { 'content-type': 'application/json' };
-  const TABS = [['bank', 'Banks & cards'], ['investment', 'Investments'], ['crypto', 'Crypto'], ['settings', 'Settings'], ['questions', 'Questions']];
+  const TABS = [['bank', 'Banks & cards'], ['investment', 'Investments'], ['crypto', 'Crypto'], ['insurance', 'Insurance'], ['settings', 'Settings'], ['questions', 'Questions']];
   const KINDS = { property: 'House / apartment', loan: 'Loan', fund: 'Fund', other: 'Other investment' };
   const FIELDS = {
     property: [['name', 'Name', 'Flat Berlin'], ['country', 'Country (2 letters)', 'DE'], ['purchase_price', 'Purchase price, EUR', '250.000'], ['purchase_date', 'Purchase date', '15.03.2019'], ['area', 'Kind of area (Germany: picks the official price index)', '@area'], ['size_m2', 'Size, m² (optional)', '75'], ['price_per_m2', 'Your own local price per m², EUR (optional, replaces the index)', '4.200'], ['current_estimate', 'Your own value today, EUR (optional, replaces everything)', '']],
@@ -52,7 +52,7 @@
        source that makes /api/real fail (loadReal's catch) would lock the user out of the one screen that
        can fix it */
     const w = W(); if (!w || !w.S.token) return;
-    css(); wireHeld(); pending = 0; tab = 'bank'; note = ''; form = null; pick = null; SET = null;
+    css(); wireHeld(); pending = 0; tab = 'bank'; note = ''; form = null; pick = null; SET = null; INS = null;
     w.modalShell('Setup · where your data comes from', w.badge('static', 'Your setup'), 'fit');
     const box = document.getElementById('mdl'); if (box) box.classList.add('wide');      /* v1.21: wide enough for every row, so no sideways scroll bar */
     const m = document.getElementById('modal'), done = () => { document.removeEventListener('keydown', onKey, true); const n = pending; pending = 0; w.closeModal(); if (n > 0) { w.S.mode === 'real' ? w.reloadData() : w.loadReal(false); } };
@@ -82,7 +82,7 @@
     el.querySelectorAll('.sptab').forEach(b => b.onclick = () => { tab = b.dataset.t; form = null; pick = null; note = ''; draw(); });
     const ap = el.querySelector('#spApply'); if (ap) ap.onclick = async () => { ap.disabled = true; ap.textContent = 'Updating…'; const n = pending; const ok = await W().reloadData(); if (ok) pending = Math.max(0, pending - n); draw(); };
     const c = el.querySelector('#spbody');
-    if (tab === 'questions') drawQuestions(c); else if (tab === 'settings') drawSettings(c); else { drawSources(c, tab); if (tab === 'investment') drawAssets(c); if (tab === 'bank') drawBalances(c); }
+    if (tab === 'questions') drawQuestions(c); else if (tab === 'insurance') drawInsurance(c); else if (tab === 'settings') drawSettings(c); else { drawSources(c, tab); if (tab === 'investment') drawAssets(c); if (tab === 'bank') drawBalances(c); }
   }
 
   const HELP = {
@@ -182,11 +182,12 @@
     const dirs = pick.dirs.map(d => `<div class="spd" data-p="${esc(d.path)}">📁 ${esc(d.name)}</div>`).join('');
     host.insertAdjacentHTML('beforeend', `<div class="sppick"><div class="cph">PICK A FOLDER${pick.path ? ' · ' + esc(pick.path) : ''}${pick.path ? ` · ${pick.csv_files} CSV file${pick.csv_files === 1 ? '' : 's'} here` : ''}</div>
       ${pick.parent !== null && pick.path ? `<div class="spd" data-p="${esc(pick.parent)}">⬆ one level up</div>` : pick.path ? '<div class="spd" data-p="">⬆ start places</div>' : ''}${dirs || '<div class="dim xs">No sub-folders.</div>'}
-      <div style="margin-top:.4rem">${pick.path ? '<button id="spUse">Use this folder</button> ' : ''}${form && form.pickFor ? '<button id="spPickCancel">Cancel</button>' : ''}</div></div>`);
+      <div style="margin-top:.4rem">${pick.path ? '<button id="spUse">Use this folder</button> ' : ''}${form && (form.pickFor || form.insFolder) ? '<button id="spPickCancel">Cancel</button>' : ''}</div></div>`);
     const pc = host.querySelector('#spPickCancel'); if (pc) pc.onclick = () => { form = null; pick = null; draw(); };
     host.querySelectorAll('.spd').forEach(d => d.onclick = () => browse(d.dataset.p));
     const use = host.querySelector('#spUse'); if (use) use.onclick = () => {
       if (form && form.pickFor) return change('/api/setup/source', { action: 'folder', id: form.pickFor, folder: pick.path }, 'folder changed');
+      if (form && form.insFolder) return insChange({ action: 'add', path: pick.path }, 'folder added - read at the next update');
       form.folder = pick.path; pick = null; draw();
     };
   }
@@ -282,6 +283,23 @@
       try { await post('/api/settings/set', { key: x.dataset.key, value: x.value }); ok.className = 'xs pos spok'; ok.textContent = '✓ saved'; }
       catch (e) { ok.className = 'xs or spok'; ok.textContent = '✗ ' + (e && e.message || 'not saved'); }
     });
+  }
+
+  /* ---- v1.33 Insurance tab: the folders with your insurance papers (PDFs). Read only; new or changed files are read at each update. ---- */
+  let INS = null;      /* { folders: [{id, path}], config: [path] } */
+  async function insChange(body, msg) {
+    try { const r = await post('/api/setup/insurance/set', body); INS = { folders: r.folders, config: (INS && INS.config) || [] }; pending++; note = msg || ''; form = null; pick = null; draw(); } catch (e) { err(e); }
+  }
+  function drawInsurance(c) {
+    if (!INS) { c.innerHTML = '<div class="dim" style="padding:1.5rem"><span class="spinner"></span> loading…</div>'; get('/api/setup/insurance').then(r => { INS = r; if (tab === 'insurance') draw(); }).catch(e => { INS = { folders: [], config: [] }; err(e); }); return; }
+    const row = (p, id) => `<div class="spr" ${id ? `data-id="${id}"` : ''}><div class="spn"><b>📁 ${esc(p)}</b><br><span class="dim xs">${id ? 'added here' : 'from the installer / config.json'}</span></div><div class="spo">${id ? '<button data-a="idel">Remove</button>' : ''}</div></div>`;
+    const rows = INS.config.map(p => row(p, 0)).join('') + INS.folders.map(f => row(f.path, f.id)).join('');
+    c.innerHTML = `<div class="cph">INSURANCE FOLDERS · PDF AND SCAN FILES · SUB-FOLDERS ARE READ TOO · FILES ARE ONLY READ, NEVER CHANGED</div>${rows || '<div class="dim" style="padding:.8rem 0">No insurance folder yet. Add the folder where you keep your policies - each sub-folder is one insurance.</div>'}
+      <div class="spform"><div class="sprow"><button id="spInsAdd">Add folder…</button></div><div id="spPick"></div></div>
+      <div class="dim xs" style="margin-top:.8rem">New or edited files are read at each update. Contracts stay on this PC; with a local model (LM Studio) the summary and the lists of what is included / excluded are written, without it plain text patterns are used.</div>`;
+    c.querySelector('#spInsAdd').onclick = () => { form = { insFolder: true }; pick = null; browse(''); };
+    c.querySelectorAll('[data-a=idel]').forEach(b => b.onclick = () => insChange({ action: 'remove', id: +b.closest('.spr').dataset.id }, 'folder removed'));
+    if (form && form.insFolder && pick) drawPicker(c);
   }
 
   function drawQuestions(c) {

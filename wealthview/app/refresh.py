@@ -31,6 +31,7 @@ from ..data.ingest.paypal import load_paypal_preferring_db, paypal_best_from_db
 from ..data.ingest import quotes
 from ..data.ingest.quotes import live_prices
 from ..analysis import insights, quick, unusual
+from ..analysis import insurance as insurance_an
 from . import fund_tools, refresh_stages
 from .refresh_stages import DB_ERRORS
 from ..analysis.alerts import dedupe_alerts, raise_alerts
@@ -112,6 +113,7 @@ class Run:
     apartment: Apartment | None
     loan: Loan | None
     assets: dict[str, Any] | None
+    insurance: dict[str, Any] | None
     totals: Totals
     giro: float
     tages: float
@@ -211,6 +213,16 @@ def stage_assets(r: Run) -> None:
                          status="database", msg="your typed assets could not be read: ", errors=DB_ERRORS)
 
 
+def stage_insurance(r: Run) -> None:
+    """Insurance folders (v1.33): new or changed contract files are analysed, data.insurance is built; None when the module is off."""
+    conn = r.conn
+    r.insurance = run_stage(r.ctx, "refresh.stage_insurance", lambda: insurance_an.run(conn, r.profile, today(), now().isoformat(timespec="seconds")), None,
+                            status="insurance", msg="insurance folders could not be read: ", errors=(*DB_ERRORS, RuntimeError))
+    if r.insurance and r.insurance.get("configured"):
+        n = r.insurance
+        r.ctx.set_status("insurance", "ok", f"{n['active']} active, {n['pending_model']} without model reading" if n["pending_model"] else f"{n['active']} active, {n['ended']} ended")
+
+
 def stage_account_totals(r: Run) -> None:
     r.totals, r.giro, r.tages = account_totals(r.gls, r.paypal)
 
@@ -229,7 +241,7 @@ def stage_runway(r: Run) -> None:
 
 def stage_logos(r: Run) -> None:
     coins = [h["currency"] for h in (r.crypto or {}).get("holdings", []) if (h.get("eur") or 0) > 0.5]
-    run_stage(r.ctx, "refresh.stage_logos", lambda: fetch_logos(r.ctx, r.depot["positions"] if r.depot else [], logo_extras(r.flows, r.gls), coins, candidates=logo_candidates(r.flows, r.gls)), None,
+    run_stage(r.ctx, "refresh.stage_logos", lambda: fetch_logos(r.ctx, r.depot["positions"] if r.depot else [], {**logo_extras(r.flows, r.gls), **insurance_an.logo_extras((r.insurance or {}).get("items", []))}, coins, candidates=logo_candidates(r.flows, r.gls)), None,
               status="logos", msg="logos could not be built: ")
 
 
@@ -254,7 +266,7 @@ def stage_sources(r: Run) -> None:
     r.sources = build_sources(r.ctx, r.depot, apartment=r.module("apartment"))
 
 
-MODULE_BLOCKS = {"examplefund": ("examplefund",), "wiwin": ("wiwin",), "loan": ("loan",), "apartment": ("apartment", "apartment_sources", "apartment_sale")}
+MODULE_BLOCKS = {"insurance": ("insurance",), "examplefund": ("examplefund",), "wiwin": ("wiwin",), "loan": ("loan",), "apartment": ("apartment", "apartment_sources", "apartment_sale")}
 
 
 def stage_assemble(r: Run) -> None:
@@ -269,6 +281,8 @@ def stage_assemble(r: Run) -> None:
     )
     if r.assets:
         r.data["assets"] = r.assets      # only when something was typed in or found: an install without typed assets keeps its data.json as it was
+    if r.insurance is not None:
+        r.data["insurance"] = r.insurance       # type: ignore[typeddict-unknown-key]
     for module, keys in MODULE_BLOCKS.items():       # a module that is off leaves its blocks out of data.json altogether
         if not r.module(module):
             for k in keys:
@@ -303,18 +317,19 @@ STAGES: list[Stage] = [
     Stage("PayPal", stage_paypal, ("conn",), ("paypal",)),
     Stage("apartment and loan models", stage_models, (), ("apartment", "loan")),
     Stage("typed assets: house, loans, funds, other", stage_assets, ("conn",), ("assets",)),
+    Stage("insurance folders", stage_insurance, ("conn",), ("insurance",)),
     Stage("account totals", stage_account_totals, ("gls", "paypal"), ("totals", "giro", "tages")),
     Stage("income estimate", stage_income, ("depot", "tages"), ("income",)),
     Stage("12-month KPIs from the flow model", stage_flow_kpis, ("gls", "flows"), ("flow_kpis",)),
     Stage("cash runway", stage_runway, ("gls", "giro", "tages"), ("runway",)),
-    Stage("merchant and position logos", stage_logos, ("depot", "crypto", "flows", "gls", "flow_kpis"), ("logos",)),
+    Stage("merchant and position logos", stage_logos, ("depot", "crypto", "flows", "gls", "flow_kpis", "insurance"), ("logos",)),
     Stage("net worth series", stage_net_worth, ("depot", "crypto", "examplefund", "apartment", "loan", "assets", "balances", "paypal"),
           ("nw", "loan_series", "gross", "net")),
     Stage("database coverage", stage_coverage, ("conn",), ("cov",)),
     Stage("dashboard alerts", stage_alerts, ("sync_rep", "rows", "depot", "gls", "flows", "giro", "cov", "flow_kpis"), ("alerts",)),
     Stage("source status lines", stage_sources, ("depot",), ("sources",)),
     Stage("assemble data.json", stage_assemble, ("totals", "nw", "loan_series", "gross", "net", "gls", "flows", "balances", "depot", "crypto",
-                                                 "examplefund", "assets", "paypal", "apartment", "loan", "income", "sources", "alerts", "runway", "logos", "conn"), ("data",)),
+                                                 "examplefund", "assets", "insurance", "paypal", "apartment", "loan", "income", "sources", "alerts", "runway", "logos", "conn"), ("data",)),
     Stage("totals, analytics, insights", stage_finish, ("conn", "sync_rep", "rows", "flows", "cov", "data", "depot"), ("finished", "sources")),
     Stage("write data.json", stage_write, ("data", "flows", "finished", "trades_saved", "conn"), ("written",)),
 ]
@@ -389,6 +404,8 @@ def quick_main() -> None:
         try:
             refresh_stages.record_snapshot(ctx, qconn, data)
             data["reminders"] = build_reminders(ctx, qconn, data.get("examplefund"), examplefund_on) or data.get("reminders")
+            if data.get("insurance") is not None:       # v1.33: a background model reading may have finished since the full refresh
+                data["insurance"] = insurance_an.rebuild_block(qconn, today(), data["insurance"], int(config.cfg_value("insurance_remind_days", 14)))      # type: ignore[typeddict-item]
         finally:
             qconn.close()
     run_stage(ctx, "refresh.quick_main", snapshot_and_reminders, None, errors=(sqlite3.Error, OSError))
@@ -400,7 +417,10 @@ def run_cli(argv: list[str]) -> int:
     """Entry point: --quick for the light refresh, otherwise the full one. Returns the process exit code."""
     try:
         bootstrap()
-        quick_main() if "--quick" in argv else main()
+        if "--insurance-model" in argv:
+            insurance_an.job_main()         # v1.33: the local model reads the insurance papers (detached job started by the insurance stage)
+        else:
+            quick_main() if "--quick" in argv else main()
     except Exception:       # broad on purpose: last-resort handler, writes refresh_error.log instead of dying silently
         text = traceback.format_exc()
         write_atomic(data_path("refresh_error.log"), now().isoformat() + "\n" + text)

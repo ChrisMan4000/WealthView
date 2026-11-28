@@ -56,7 +56,7 @@ class ServerState:
 
 STATE = ServerState()
 STATIC = {"/": "wealthview.html", "/wealthview.html": "wealthview.html", "/wf_logos.js": "wf_logos.js",
-          "/wv.js": "wv.js", "/layout.js": "layout.js", "/flowpop.js": "flowpop.js", "/catrules.js": "catrules.js", "/groceries.js": "groceries.js", "/setup.js": "setup.js", "/analytics.js": "analytics.js", "/insights.js": "insights.js", "/wv_demo.js": "wv_demo.js", "/wf_data.js": "wf_data.js", "/wv-intro.js": "wv-intro.js", "/version.js": "version.js", "/land-110m.json": "vendor/land-110m.json", "/favicon.ico": "icons/wealthview.ico"}
+          "/wv.js": "wv.js", "/layout.js": "layout.js", "/flowpop.js": "flowpop.js", "/catrules.js": "catrules.js", "/groceries.js": "groceries.js", "/insurance.js": "insurance.js", "/setup.js": "setup.js", "/analytics.js": "analytics.js", "/insights.js": "insights.js", "/wv_demo.js": "wv_demo.js", "/wf_data.js": "wf_data.js", "/wv-intro.js": "wv-intro.js", "/version.js": "version.js", "/land-110m.json": "vendor/land-110m.json", "/favicon.ico": "icons/wealthview.ico"}
 # Deny by default: every /api/ route needs a PIN session unless it is listed here, so a new route is protected without anyone
 # having to remember to lock it. Static files are public except the ones in LOCKED_PATHS (answered as an empty script).
 # The pairs are (HTTP method, path): a public path is public for that one method only.
@@ -72,7 +72,7 @@ GET_ROUTES: dict[str, tuple[str, str | None]] = {
     "/api/paypal": ("_api_paypal", "read_paypal"), "/api/src_logos": ("_api_src_logos", "read_src_logos"),
     "/api/ask/status": ("_api_ask_status", None), "/api/unusual_seen": ("_api_seen_get", "read_unusual_seen"),
     "/api/cat/overview": ("_api_cat_overview", "read_categories"), "/api/setup/state": ("_api_setup_state", "read_setup"),
-    "/api/setup/browse": ("_api_setup_browse", "browse_folders"),
+    "/api/setup/browse": ("_api_setup_browse", "browse_folders"), "/api/setup/insurance": ("_api_setup_insurance", None),
     "/api/groceries": ("_api_groceries", "read_groceries"), "/api/watch": ("_api_watch", None), "/api/settings": ("_api_settings", None),
 }
 POST_ROUTES: dict[str, tuple[str, str | None]] = {
@@ -81,7 +81,7 @@ POST_ROUTES: dict[str, tuple[str, str | None]] = {
     "/api/ask": ("_api_ask", None), "/api/ask/start": ("_api_ask_start", None), "/api/cat/set": ("_api_cat_set", None), "/api/cat/delete": ("_api_cat_delete", None),
     "/api/setup/source": ("_api_setup_source", None), "/api/setup/asset": ("_api_setup_asset", None),
     "/api/watch/set": ("_api_watch_set", None), "/api/settings/set": ("_api_settings_set", None),
-    "/api/setup/balance": ("_api_setup_balance", None), "/api/setup/answer": ("_api_setup_answer", None), "/api/setup/test": ("_api_setup_test", None),
+    "/api/setup/balance": ("_api_setup_balance", None), "/api/setup/insurance/set": ("_api_setup_insurance_set", None), "/api/setup/answer": ("_api_setup_answer", None), "/api/setup/test": ("_api_setup_test", None),
 }
 MIME = {".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8",
         ".ico": "image/x-icon", ".png": "image/png", ".json": "application/json"}
@@ -471,6 +471,28 @@ class RequestHandler(BaseHTTPRequestHandler):
         """Setup: change one setting of config.json (checked against its allowed range)."""
         audit.record("setting_set", str(body.get("key")))
         return watchlist.settings_set(body)
+
+    @api_boundary()
+    def _api_setup_insurance(self) -> dict[str, Any]:
+        """Setup (v1.33): the insurance folders (from config.json and the ones added here)."""
+        from ..data.ingest import insurance as ins_ing
+        with open_data_db() as conn:
+            return dict(folders=ins_ing.list_folders(conn), config=[f for f in (config.load_config().get("insurance_folders") or []) if isinstance(f, str)])
+
+    @api_boundary()
+    def _api_setup_insurance_set(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Setup (v1.33): add / remove an insurance folder; adding one also switches the insurance box on."""
+        from ..common.profile import save_profile
+        from ..data.ingest import insurance as ins_ing
+        audit.record("setup_insurance", str(body.get("action")))
+        with open_data_db() as conn:
+            r = ins_ing.folder_action(conn, body, dt.datetime.now().isoformat(timespec="seconds"))
+        if r.get("ok") and body.get("action") == "add":
+            p = load_profile()
+            if not p.modules.get("insurance"):
+                p.modules["insurance"] = True
+                save_profile(p)
+        return r
 
     @api_boundary()
     def _api_setup_balance(self, body: dict[str, Any]) -> dict[str, Any]:

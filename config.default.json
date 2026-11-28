@@ -91,5 +91,9 @@
   "merchant_extra": {},
   "liabilities": {},
   "project_url": "",
-  "jarvis_url": ""
+  "jarvis_url": "",
+  "insurance_folders": [],
+  "insurance_remind_days": 14,
+  "insurance_hide": [],
+  "insurance_manual": []
 }

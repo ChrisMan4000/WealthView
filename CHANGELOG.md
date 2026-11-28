@@ -2,6 +2,14 @@
 
 The version number lives in one file, `version.js`, and is shown in the dashboard header, browser tab, intro, lock window and installer.
 
+## v1.33 (2026-11-28)
+- **Insurance box:** lists your active insurances with company logo, timeline and cost per month, and warns two weeks before one ends (top-bar chip, a Smart-suggestions tip and an orange row). Click an insurance for a summary and a table of what is included and what is excluded.
+- **Reads your insurance folder:** each sub-folder is one contract (PDFs, read only). "Refresh data" reads only new or edited files; the results are stored in the database (`insurances`, `insurance_files`).
+- **Local model optional:** with LM Studio the summary and the included / excluded lists are written (in a background job); without it plain text patterns find the premium, dates and company. Nothing leaves the PC.
+- **Real cost from your bank bookings:** premium and interval are checked against payments to the insurer; a yearly premium without an end date gets its yearly renewal date.
+- **Setup:** new "Insurance" tab in the dashboard Setup, and a new "Your insurances" page in the setup wizard (both editions).
+- Demo mode shows five invented insurers.
+
 ## v1.32 (2026-11-27)
 - **LM Studio starts on click:** the local model (LM Studio + Gemma 4) is no longer started when WealthView opens. It starts only when you click the Ask box (new `POST /api/ask/start`; at most once a minute, skipped when it already runs). Opening the dashboard is now lighter when you do not use the chat.
 

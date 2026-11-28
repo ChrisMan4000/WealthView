@@ -12,7 +12,7 @@ from . import fileio, paths
 log = logging.getLogger("wealthview")
 
 TIERS = ("ultrawide", "desktop", "laptop", "compact")
-MODULE_KEYS = ("examplefund", "wiwin", "loan", "apartment")
+MODULE_KEYS = ("examplefund", "wiwin", "loan", "apartment", "insurance")
 _ASSET_CLASSES = ["realEstate", "securities", "privateEquity", "cash", "crypto"]
 
 

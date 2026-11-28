@@ -145,7 +145,7 @@ def _recent_bookings(rows: list[BookingRow], own: OwnAccounts) -> tuple[list[Rec
     for r in rows:
         if own.is_external(r):
             cat = classify(r)
-            all_bookings.append(RecentBooking(d=iso(r["date"]), n=booking_label(r), v=round2(r["amount"]), c=cat))
+            all_bookings.append(RecentBooking(d=iso(r["date"]), n=booking_label(r), v=round2(r["amount"]), c=cat, src=r["kind"]))
             if len(recent) < 16:
                 recent.append(RecentBooking(d=iso(r["date"]), n=booking_label(r), v=round2(r["amount"]), c=cat, src=r["kind"]))
     return recent, all_bookings

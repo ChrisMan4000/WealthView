@@ -1,6 +1,6 @@
 """Stages of the refresh that fill the RunContext: open and sync the database, read the bookings and the depot, save trades and the daily snapshot."""
 from __future__ import annotations
-import json, sqlite3
+import json, sqlite3, sys
 from ..common import config, safenet
 from ..common.paths import data_path
 from ..common.profile import load_profile
@@ -62,7 +62,7 @@ def sync_bank(ctx: RunContext, conn: sqlite3.Connection) -> None:
     """Pulls new bookings over FinTS (a failure only warns)."""
     def bank_sync() -> None:
         places = [x for x in db_accounts.list_sources(conn) if x["source_type"] == "api" and x["connector"] == "fints"]
-        r = fints_sync.sync_bank(conn, places, keystore.load, min_hours=float((config.load_config().get("fints") or {}).get("min_hours", 12)), holdings=True)
+        r = fints_sync.sync_bank(conn, places, keystore.load, force="--force-bank" in sys.argv, min_hours=float((config.load_config().get("fints") or {}).get("min_hours", 12)), holdings=True)
         if r["status"] != "off":
             ctx.set_status("bank sync", "ok" if r["status"] == "ok" else "warn", r["message"])
             for w in r["warnings"]:

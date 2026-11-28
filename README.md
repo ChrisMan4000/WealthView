@@ -27,7 +27,7 @@ It is the sibling of [IronMan-JARVIS](https://github.com/ChrisMan4000/IronMan-JA
   <sub><a href="https://github.com/ChrisMan4000/WealthView/releases">all releases</a> &middot; SHA-256 below</sub>
 </p>
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-v1.32-0a84ff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-v1.33-0a84ff?style=flat-square">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square">
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows-0078d4?style=flat-square&logo=windows">
   <img alt="python" src="https://img.shields.io/badge/python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white">
@@ -61,12 +61,18 @@ The wizard checks your PC (Python 3.10+, optional LM Studio for the Ask box), as
 - 🧮 **Portfolio analysis:** performance, risk, exposure, liquidity, tax (Germany), costs and income
 - 💬 **Ask your data:** questions answered by a free local model that writes read-only queries, run through [LM Studio](https://lmstudio.ai): download any of the latest open-source LLMs from Meta, Google, Microsoft, OpenAI, Alibaba or Mistral and use them at no cost
 - 🌐 **Network map:** every outbound connection WealthView itself makes, host and time only
+- 🛡️ **Insurances:** active contracts from your insurance folder with logo, timeline and monthly cost, a reminder two weeks before one ends, and a summary of what is included and excluded (local model optional)
 - 🔔 **Update reminder** chip when new bank exports are due, automatic import of new files
 - 🙈 **Privacy blur**, demo mode, keyboard shortcuts (P blur, R refresh, F fullscreen, Esc close)
 
 ## 🖼️ Screenshots
 
 Every box and pop-up below is zoomed in so the text is readable. All data is invented demo data.
+
+**Insurances**: active contracts with timeline and cost per month; the orange row ends within two weeks. Click one for the summary and what is included / excluded.
+
+<p align="center"><a href="docs/screenshots/10-insurance.png"><img src="docs/screenshots/10-insurance.png" alt="Insurance box (demo, invented insurers)" width="70%"></a></p>
+<p align="center"><a href="docs/screenshots/11-insurance-popup.png"><img src="docs/screenshots/11-insurance-popup.png" alt="Insurance pop-up: summary, included, excluded" width="70%"></a></p>
 
 **Heatmap**: every panel with a **▦ Heat** button turns into a heatmap (here: securities, colour = gain against cost, size = current value).
 

@@ -186,4 +186,5 @@ class GlsBlock(_GlsBlockRequired, total=False):
     income_sources: list[NameValue]
     merchants: list[Spender]
     bookings: dict[str, list[list[Any]]]
+    bookings_flat: list[list[Any]]           # [date, amount, category, name, account kind], last 366 days (See bookings pop-up)
     runway_months: float | None
